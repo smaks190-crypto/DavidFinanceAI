@@ -1230,21 +1230,32 @@ fun DavidLiveSheet(
                             }
                         }
                         val speech = resolveDavidLiveSpeech(effectiveVisualState, liveSubtitle)
-                        if (speech != null) {
-                            Surface(
-                                color = com.example.ui.theme.ObsidianSurface,
-                                shape = androidx.compose.material3.MaterialTheme.shapes.medium,
-                                border = BorderStroke(1.dp, com.example.ui.theme.GlassBorder),
-                                modifier = Modifier.fillMaxWidth().testTag("david_live_subtitle_bubble")
-                            ) {
-                                Text(
-                                    text = extractActiveSpeechBubbleSegment(speech).activeText,
-                                    style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                                    color = com.example.ui.theme.Slate100,
-                                    maxLines = 4,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(16.dp)
-                                )
+                        // Reserve subtitle space independently of incoming speech updates.
+                        // Otherwise the weighted spacers below shift the sphere vertically.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(if (isEmbeddedInModalCard) 104.dp else 120.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (speech != null) {
+                                Surface(
+                                    color = com.example.ui.theme.ObsidianSurface,
+                                    shape = androidx.compose.material3.MaterialTheme.shapes.medium,
+                                    border = BorderStroke(1.dp, com.example.ui.theme.GlassBorder),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("david_live_subtitle_bubble")
+                                ) {
+                                    Text(
+                                        text = extractActiveSpeechBubbleSegment(speech).activeText,
+                                        style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                                        color = com.example.ui.theme.Slate100,
+                                        maxLines = 4,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(16.dp)
+                                    )
+                                }
                             }
                         }
                     }
