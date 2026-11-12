@@ -97,8 +97,19 @@ class BudgetRepository(
         val startMs = System.currentTimeMillis()
         try {
             db.withTransaction {
-                accountDao.updateBalance(fromAccountId, -amount)
-                accountDao.updateBalance(toAccountId, amount)
+                require(amount.isFinite() && amount > 0.0) { "Сумма перевода должна быть положительной и конечной" }
+                require(fromAccountId != toAccountId) { "Выберите разные счета" }
+                val source = requireNotNull(accountDao.getAccountById(fromAccountId)) { "Счёт списания удалён" }
+                val destination = requireNotNull(accountDao.getAccountById(toAccountId)) { "Счёт зачисления удалён" }
+                require(source.budgetId == budgetId && destination.budgetId == budgetId) {
+                    "Оба счёта должны принадлежать выбранному бюджету"
+                }
+                require(source.balance.isFinite() && destination.balance.isFinite() &&
+                    (source.balance - amount).isFinite() && (destination.balance + amount).isFinite()) {
+                    "Недопустимый баланс после перевода"
+                }
+                check(accountDao.updateBalance(fromAccountId, -amount) == 1) { "Счёт списания не обновлён" }
+                check(accountDao.updateBalance(toAccountId, amount) == 1) { "Счёт зачисления не обновлён" }
                 notificationDao.insertNotification(
                     NotificationEntity(
                         budgetId = budgetId,
@@ -274,15 +285,17 @@ class BudgetRepository(
     }
 
     suspend fun deleteProfile(id: String) {
-        budgetProfileDao.deleteProfileById(id)
-        transactionDao.deleteTransactionsByBudgetId(id)
-        goalDao.deleteGoalsByBudgetId(id)
-        aiAuditDao.deleteAuditsByBudgetId(id)
-        categoryDao.deleteCategoriesByBudgetId(id)
-        accountDao.deleteAccountsByBudgetId(id)
-        notificationDao.deleteNotificationsByBudgetId(id)
-        recurringPaymentDao.deleteExecutionLogsByBudgetId(id)
-        recurringPaymentDao.deleteRecurringPaymentsByBudgetId(id)
+        db.withTransaction {
+            budgetProfileDao.deleteProfileById(id)
+            transactionDao.deleteTransactionsByBudgetId(id)
+            goalDao.deleteGoalsByBudgetId(id)
+            aiAuditDao.deleteAuditsByBudgetId(id)
+            categoryDao.deleteCategoriesByBudgetId(id)
+            accountDao.deleteAccountsByBudgetId(id)
+            notificationDao.deleteNotificationsByBudgetId(id)
+            recurringPaymentDao.deleteExecutionLogsByBudgetId(id)
+            recurringPaymentDao.deleteRecurringPaymentsByBudgetId(id)
+        }
     }
 
     suspend fun clearAllData() {

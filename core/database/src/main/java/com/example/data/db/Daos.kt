@@ -135,7 +135,7 @@ interface AccountDao {
     suspend fun getAccountById(id: String): AccountEntity?
 
     @Query("UPDATE accounts SET balance = balance + :delta WHERE id = :id")
-    suspend fun updateBalance(id: String, delta: Double)
+    suspend fun updateBalance(id: String, delta: Double): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAccount(account: AccountEntity)

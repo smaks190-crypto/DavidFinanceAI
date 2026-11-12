@@ -903,14 +903,20 @@ class TransactionStateDelegate(
         com.example.utils.GlobalConsoleLogger.i("UI", "Перевод $amount ₽ с «$fromName» на «$toName»")
         scope.launch {
             val bId = selectedBudgetId.value ?: "default"
-            repository.transferBetweenAccounts(
-                budgetId = bId,
-                fromAccountId = fromAccountId,
-                toAccountId = toAccountId,
-                amount = amount,
-                fromName = fromName,
-                toName = toName
-            )
+            try {
+                repository.transferBetweenAccounts(
+                    budgetId = bId,
+                    fromAccountId = fromAccountId,
+                    toAccountId = toAccountId,
+                    amount = amount,
+                    fromName = fromName,
+                    toName = toName
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                toastMessage.emit("Перевод не выполнен: ${e.localizedMessage ?: "ошибка записи"}")
+            }
         }
     }
 
