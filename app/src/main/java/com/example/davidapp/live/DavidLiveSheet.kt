@@ -120,6 +120,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -769,7 +770,8 @@ fun DavidLiveSheet(
     activeToolName: String? = null,
     debugOverrideVisualState: DavidLiveVisualState? = null,
     onSelectDebugVisualState: ((DavidLiveVisualState?) -> Unit)? = null,
-    enableDebugStateSwitcher: Boolean = false
+    enableDebugStateSwitcher: Boolean = false,
+    subtitleSpeaker: DavidLiveSpeaker = activeSpeaker
 ) {
     val context = LocalContext.current
 
@@ -1229,24 +1231,11 @@ fun DavidLiveSheet(
                                 }
                             }
                         }
-                        val speech = resolveDavidLiveSpeech(effectiveVisualState, liveSubtitle)
-                        if (speech != null) {
-                            Surface(
-                                color = com.example.ui.theme.ObsidianSurface,
-                                shape = androidx.compose.material3.MaterialTheme.shapes.medium,
-                                border = BorderStroke(1.dp, com.example.ui.theme.GlassBorder),
-                                modifier = Modifier.fillMaxWidth().testTag("david_live_subtitle_bubble")
-                            ) {
-                                Text(
-                                    text = extractActiveSpeechBubbleSegment(speech).activeText,
-                                    style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                                    color = com.example.ui.theme.Slate100,
-                                    maxLines = 4,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(16.dp)
-                                )
-                            }
-                        }
+                        DavidLiveSpeechOverlay(
+                            speech = resolveDavidLiveSpeech(effectiveVisualState, liveSubtitle),
+                            speaker = subtitleSpeaker,
+                            isEmbeddedInModalCard = isEmbeddedInModalCard
+                        )
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
@@ -1665,4 +1654,73 @@ internal fun computeHorizontalWaveBarTargetMagnitude(
     val idleContour = 0.10f + 0.24f * centerEnvelope * idleBreathing
     val baseSignal = maxOf(rawRay * 0.65f, if (isIdleListeningUnmuted) idleContour else 0.08f)
     return (baseSignal * (0.32f + 0.76f * centerEnvelope) * waveActivity).coerceIn(0.06f, 1f)
+}
+
+/** The fixed slot preserves PR #100's geometry throughout both fade transitions. */
+@Composable
+internal fun DavidLiveSpeechOverlay(
+    speech: String?,
+    speaker: DavidLiveSpeaker,
+    isEmbeddedInModalCard: Boolean
+) {
+    var lastSpeech by remember { mutableStateOf("") }
+    var lastSpeaker by remember { mutableStateOf(DavidLiveSpeaker.DAVID) }
+    SideEffect {
+        if (speech != null) {
+            lastSpeech = speech
+            lastSpeaker = speaker
+        }
+    }
+    val displayedSpeaker = if (speech != null) speaker else lastSpeaker
+    Box(
+        modifier = Modifier.fillMaxWidth()
+            .height(if (isEmbeddedInModalCard) 104.dp else 120.dp)
+            .testTag("david_live_subtitle_slot"),
+        contentAlignment = if (displayedSpeaker == DavidLiveSpeaker.USER) Alignment.CenterStart else Alignment.CenterEnd
+    ) {
+        AnimatedVisibility(
+            visible = speech != null,
+            enter = fadeIn(tween(220)),
+            exit = fadeOut(tween(400))
+        ) {
+            Surface(
+                color = com.example.ui.theme.ObsidianSurface,
+                shape = androidx.compose.material3.MaterialTheme.shapes.medium,
+                border = BorderStroke(1.dp, com.example.ui.theme.GlassBorder),
+                modifier = Modifier.fillMaxWidth(0.88f).testTag("david_live_subtitle_bubble")
+            ) {
+                StreamingLiveSpeechText(
+                    text = extractActiveSpeechBubbleSegment(speech ?: lastSpeech).activeText,
+                    speaker = displayedSpeaker
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StreamingLiveSpeechText(text: String, speaker: DavidLiveSpeaker) {
+    var previousText by remember(speaker) { mutableStateOf("") }
+    var splitIndex by remember(speaker) { mutableIntStateOf(0) }
+    val tailAlpha = remember(speaker) { Animatable(0f) }
+    LaunchedEffect(text, speaker) {
+        splitIndex = computeStreamingTextFadeSplitIndex(previousText, text)
+        previousText = text
+        tailAlpha.snapTo(0f)
+        tailAlpha.animateTo(1f, tween(220))
+    }
+    val split = splitIndex.coerceIn(0, text.length)
+    Text(
+        text = buildAnnotatedString {
+            append(text.substring(0, split))
+            pushStyle(SpanStyle(color = com.example.ui.theme.Slate100.copy(alpha = tailAlpha.value)))
+            append(text.substring(split))
+            pop()
+        },
+        style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+        color = com.example.ui.theme.Slate100,
+        maxLines = 4,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(16.dp)
+    )
 }

@@ -137,8 +137,9 @@ class DavidLiveSessionController(
 
     private val _liveSubtitle = MutableStateFlow("Говорите, я слушаю...")
     val liveSubtitle: StateFlow<String> = _liveSubtitle.asStateFlow()
-    private val _spokenTranscript = MutableStateFlow("")
-    val spokenTranscript: StateFlow<String> = _spokenTranscript.asStateFlow()
+    private val subtitleLifecycle = DavidLiveSubtitleLifecycle(controllerScope)
+    val spokenTranscript: StateFlow<String> = subtitleLifecycle.text
+    val subtitleSpeaker: StateFlow<DavidLiveSpeaker> = subtitleLifecycle.speaker
 
     private val _isMicMuted = MutableStateFlow(false)
     val isMicMuted: StateFlow<Boolean> = _isMicMuted.asStateFlow()
@@ -535,7 +536,7 @@ class DavidLiveSessionController(
         pendingServerTurnComplete.set(false)
         audioEngine.resetDavidTurnSampleCounters()
         publishLiveTranscriptTurns()
-        _spokenTranscript.value = ""
+        subtitleLifecycle.clear()
         financialToolsProvider.clearVerifiedFacts()
         _isMicMuted.value = false
         audioEngine.setMicMuted(false)
@@ -618,7 +619,7 @@ class DavidLiveSessionController(
             hasPendingDavidTranscript() ||
             audioEngine.activeSpeaker.value == DavidLiveSpeaker.DAVID
 
-        sessionGeneration.incrementAndGet()
+        sessionGeneration.incrementAndGet().also { subtitleLifecycle.clear() }
         reconnectJob?.cancel()
         reconnectJob = null
         readyFlashJob?.cancel()
@@ -638,6 +639,7 @@ class DavidLiveSessionController(
         _errorMessage.value = null
         _connectionState.value = DavidLiveConnectionState.RECONNECTING
         _visualPhase.value = DavidLiveVisualPhase.CONNECTION_LOST
+        subtitleLifecycle.clear()
         _liveSubtitle.value = "Связь с Давидом прервана"
 
         GlobalConsoleLogger.w(
@@ -769,7 +771,7 @@ class DavidLiveSessionController(
      */
     fun endSession(): Pair<List<DavidLiveTranscriptTurn>, List<DavidLiveToolFact>> {
         intentionalClose.set(true)
-        sessionGeneration.incrementAndGet()
+        sessionGeneration.incrementAndGet().also { subtitleLifecycle.clear() }
         reconnectJob?.cancel()
         reconnectJob = null
         readyFlashJob?.cancel()
@@ -822,7 +824,7 @@ class DavidLiveSessionController(
         hasOutputTranscriptionInCurrentTurn = false
         speechSyncTracker.reset()
         pendingServerTurnComplete.set(false)
-        _spokenTranscript.value = ""
+        subtitleLifecycle.clear()
         publishLiveTranscriptTurns()
     }
 
@@ -882,7 +884,7 @@ class DavidLiveSessionController(
         if (webSocketFactory === okHttpClient && webSocket != null) {
             val oldSocket = webSocket
             webSocket = null
-            val gen = sessionGeneration.incrementAndGet()
+            val gen = sessionGeneration.incrementAndGet().also { subtitleLifecycle.clear() }
             try {
                 oldSocket?.cancel()
             } catch (_: Exception) {
@@ -979,6 +981,7 @@ class DavidLiveSessionController(
      * `activeSpeaker` to [DavidLiveSpeaker.NONE] so the UI never remains stuck on "Говорит Давид...".
      */
     private fun resetAudioAndSpeakingStateOnDisconnect(wasInterruptedMidTurn: Boolean = false) {
+        subtitleLifecycle.clear()
         val davidDraft = peekPendingDavidTranscript()
         val hadPendingDavid = davidDraft.isNotEmpty()
         val wasSpeakingOrThinking = wasInterruptedMidTurn ||
@@ -1020,13 +1023,9 @@ class DavidLiveSessionController(
 
     private fun handleModelPlaybackDrained(connectionGen: Int) {
         if (intentionalClose.get() || connectionGen != sessionGeneration.get() || !setupCompleted.get()) return
-        if (_connectionState.value == DavidLiveConnectionState.DAVID_SPEAKING) {
+        // A temporary empty audio queue is not the end of a server turn.
+        if (pendingServerTurnComplete.get() && audioEngine.isPlaybackCurrentlyDrained()) {
             completeDavidTurnAfterPlaybackDrain()
-            _connectionState.value = if (_isMicMuted.value) {
-                DavidLiveConnectionState.MUTED
-            } else {
-                DavidLiveConnectionState.LISTENING
-            }
             _visualPhase.value = DavidLiveVisualPhase.CONVERSATION_ACTIVE
         }
     }
@@ -1045,7 +1044,7 @@ class DavidLiveSessionController(
         _isSessionReady.value = false
         resetProcessingFlags()
 
-        val connectionGen = sessionGeneration.incrementAndGet()
+        val connectionGen = sessionGeneration.incrementAndGet().also { subtitleLifecycle.clear() }
         val oldSocket = webSocket
         webSocket = null
         try {
@@ -1172,6 +1171,7 @@ class DavidLiveSessionController(
 
         // First mark visual phase as CONNECTION_LOST immediately upon disconnect
         _visualPhase.value = DavidLiveVisualPhase.CONNECTION_LOST
+        subtitleLifecycle.clear()
         _liveSubtitle.value = "Связь с Давидом прервана"
 
         _failureKind.value = classifyConnectionFailure(throwable, httpCode ?: closingCode, closingReason.orEmpty())
@@ -1247,6 +1247,7 @@ class DavidLiveSessionController(
         _connectionState.value = DavidLiveConnectionState.ERROR
         _visualPhase.value = DavidLiveVisualPhase.CONNECTION_LOST
         _errorMessage.value = russianError
+        subtitleLifecycle.clear()
         _liveSubtitle.value = "Связь с Давидом прервана"
 
         GlobalConsoleLogger.e(
@@ -1514,6 +1515,7 @@ class DavidLiveSessionController(
         // 2. Tool Call (controlled on-demand read-only financial queries with deduplication)
         val toolCall = root.optJSONObject("toolCall")
         if (toolCall != null) {
+            subtitleLifecycle.clear()
             val functionCalls = toolCall.optJSONArray("functionCalls")
             if (functionCalls != null && functionCalls.length() > 0) {
                 unclosedServerPcmTurnActive.set(false)
@@ -1625,6 +1627,7 @@ class DavidLiveSessionController(
                 )
                 return
             }
+            if (!hasPendingUserTranscript()) subtitleLifecycle.clear()
             audioEngine.setServerTurnSpeakingActive(false)
             unclosedServerPcmTurnActive.set(false)
             awaitingInterruptedServerTurnClose.set(false)
@@ -1687,7 +1690,7 @@ class DavidLiveSessionController(
             val cleanedUserText = sanitizeSpokenSubtitle(currentUserText)
             if (cleanedUserText.isNotBlank()) {
                 _liveSubtitle.value = cleanedUserText
-                _spokenTranscript.value = cleanedUserText
+                subtitleLifecycle.show(cleanedUserText, DavidLiveSpeaker.USER)
                 publishLiveTranscriptTurns()
                 _isModelThinking.value = true
                 recomputeVisualState()
@@ -1702,6 +1705,7 @@ class DavidLiveSessionController(
             ?.optString("text")
             ?.takeIf { it.isNotBlank() }
         if (outputTranscription != null && !isModelTurnSuppressedByLocalBargeIn()) {
+            subtitleLifecycle.beginDavidTurn()
             bargeInPendingNewResponse.set(false)
             bargeInFollowUpWatchdogJob?.cancel()
             bargeInFollowUpWatchdogJob = null
@@ -1735,6 +1739,7 @@ class DavidLiveSessionController(
         val modelTurn = serverContent.optJSONObject("modelTurn")
         val parts = modelTurn?.optJSONArray("parts")
         if (parts != null && !isModelTurnSuppressedByLocalBargeIn()) {
+            subtitleLifecycle.acceptUserTurn()
             for (i in 0 until parts.length()) {
                 val part = parts.optJSONObject(i) ?: continue
 
@@ -1763,6 +1768,7 @@ class DavidLiveSessionController(
                 ) {
                     val cleanedPart = sanitizeSpokenSubtitle(textPart)
                     if (cleanedPart.isNotBlank()) {
+                        subtitleLifecycle.beginDavidTurn()
                         unclosedServerPcmTurnActive.set(true)
                         bargeInPendingNewResponse.set(false)
                         bargeInFollowUpWatchdogJob?.cancel()
@@ -1790,6 +1796,7 @@ class DavidLiveSessionController(
                             null
                         }
                         if (pcmBytes != null && pcmBytes.isNotEmpty()) {
+                            subtitleLifecycle.beginDavidTurn()
                             unclosedServerPcmTurnActive.set(true)
                             bargeInPendingNewResponse.set(false)
                             bargeInFollowUpWatchdogJob?.cancel()
@@ -2046,6 +2053,7 @@ class DavidLiveSessionController(
     }
 
     internal fun handleConfirmedUserBargeIn(nowMs: Long = System.currentTimeMillis()) {
+        subtitleLifecycle.clear()
         pendingServerTurnComplete.set(false)
         speechSyncTracker.reset()
         resetProcessingFlags()
@@ -2119,7 +2127,7 @@ class DavidLiveSessionController(
 
         if (!shouldUseAudioSyncedSubtitles()) {
             _liveSubtitle.value = fullCleaned
-            _spokenTranscript.value = fullCleaned
+            subtitleLifecycle.updateDavidText(fullCleaned)
             publishLiveTranscriptTurns()
             return
         }
@@ -2140,11 +2148,11 @@ class DavidLiveSessionController(
         )
         if (visibleText.isNotBlank()) {
             _liveSubtitle.value = visibleText
-            _spokenTranscript.value = visibleText
+            subtitleLifecycle.updateDavidText(visibleText)
         } else if (_connectionState.value == DavidLiveConnectionState.DAVID_SPEAKING) {
             // Пока первые ~50 мс голоса Давида ещё находятся в буфере DAC, не показываем будущие слова заранее
             _liveSubtitle.value = "Давид отвечает..."
-            _spokenTranscript.value = ""
+            subtitleLifecycle.updateDavidText("")
         }
         publishLiveTranscriptTurns()
     }
@@ -2153,13 +2161,14 @@ class DavidLiveSessionController(
         // A queued flow notification can lag behind a newly enqueued audio chunk.
         // Queue emptiness alone does not mean that AudioTrack has finished playing.
         if (!audioEngine.isPlaybackCurrentlyDrained()) return
-        pendingServerTurnComplete.set(false)
+        if (!pendingServerTurnComplete.compareAndSet(true, false)) return
         val finalDavidText = sanitizeSpokenSubtitle(peekPendingDavidTranscript())
         if (finalDavidText.isNotBlank()) {
             _liveSubtitle.value = finalDavidText
-            _spokenTranscript.value = finalDavidText
+            subtitleLifecycle.show(finalDavidText, DavidLiveSpeaker.DAVID)
         }
         flushPendingTranscripts()
+        subtitleLifecycle.completeDavidTurn()
         resetProcessingFlags()
         _connectionState.value = if (_isMicMuted.value) DavidLiveConnectionState.MUTED else DavidLiveConnectionState.LISTENING
         if (!_isMicMuted.value && _liveSubtitle.value.isBlank()) {
