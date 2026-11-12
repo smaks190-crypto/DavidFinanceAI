@@ -187,7 +187,7 @@ fun resolveDavidLiveStatusLabel(
         DavidLiveVisualState.ANALYZING -> "Анализирую данные..."
         DavidLiveVisualState.THINKING -> "Думаю..."
         DavidLiveVisualState.PREPARING_RESPONSE -> "Готовлю ответ..."
-        DavidLiveVisualState.SUCCESS -> "Готово!"
+        DavidLiveVisualState.SUCCESS -> "Давид на связи"
         DavidLiveVisualState.DAVID_SPEAKING -> "Говорит Давид..."
         DavidLiveVisualState.USER_SPEAKING -> "Ты говоришь..."
         DavidLiveVisualState.IDLE_LISTENING -> {

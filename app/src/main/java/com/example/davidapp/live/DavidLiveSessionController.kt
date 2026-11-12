@@ -85,6 +85,11 @@ class DavidLiveSessionController(
     private var webSocket: WebSocket? = null
     private var reconnectJob: Job? = null
     private var readyFlashJob: Job? = null
+    private var successPulseJob: Job? = null
+    private val successPulseLock = Any()
+    private var successPulseRevision = 0L
+    private val processingRevision = AtomicLong(0L)
+    private val processingLock = Any()
     private var currentApiKey: String = ""
     private var modelAttemptIndex: Int = 0
     private var autoReconnectAttempts: Int = 0
@@ -276,7 +281,13 @@ class DavidLiveSessionController(
     }
 
     init {
-        controllerScope.launch { audioEngine.activeSpeaker.collect { recomputeVisualState() } }
+        controllerScope.launch { audioEngine.activeSpeaker.collect { speaker ->
+            if (speaker == DavidLiveSpeaker.USER || speaker == DavidLiveSpeaker.DAVID) {
+                _isReadyFlashActive.value = false
+                cancelSuccessPulse()
+            }
+            recomputeVisualState()
+        } }
         controllerScope.launch { audioEngine.isPlaybackDrained.collect { drained ->
             if (drained && pendingServerTurnComplete.get()) completeDavidTurnAfterPlaybackDrain()
             else recomputeVisualState()
@@ -285,6 +296,8 @@ class DavidLiveSessionController(
         controllerScope.launch { audioEngine.isWithinUserSpeechHold.collect { recomputeVisualState() } }
         controllerScope.launch { audioEngine.isWithinDavidSpeechHold.collect { recomputeVisualState() } }
         controllerScope.launch { _connectionState.collect { recomputeVisualState() } }
+        controllerScope.launch { _isReadyFlashActive.collect { recomputeVisualState() } }
+        controllerScope.launch { _isMicMuted.collect { recomputeVisualState() } }
 
         financialToolsProvider.setConversationalUserMessagesProvider {
             buildList {
@@ -307,30 +320,43 @@ class DavidLiveSessionController(
         recomputeVisualState()
     }
 
+    // A presentation pulse never interrupts speech, clears a tool lookup, or claims readiness.
     fun triggerSuccessPulse(durationMs: Long = DavidLiveVisualStateResolver.SUCCESS_PULSE_DURATION_MS) {
-        resetProcessingFlags()
-        _isSuccessPulseActive.value = true
-        if (isDavidLiveVoiceCapableState(_connectionState.value)) {
-            _connectionState.value = DavidLiveConnectionState.SUCCESS
-        }
-        recomputeVisualState()
-        controllerScope.launch {
-            kotlinx.coroutines.delay(durationMs.coerceAtLeast(300L))
-            _isSuccessPulseActive.value = false
-            if (_connectionState.value == DavidLiveConnectionState.SUCCESS) {
-                _connectionState.value = if (_isMicMuted.value) DavidLiveConnectionState.MUTED else DavidLiveConnectionState.LISTENING
-            }
+        synchronized(successPulseLock) {
+            if (!setupCompleted.get() || !_isSessionReady.value ||
+                !isDavidLiveVoiceCapableState(_connectionState.value)) return
+            successPulseJob?.cancel()
+            val revision = ++successPulseRevision
+            val connectionGen = sessionGeneration.get()
+            _isSuccessPulseActive.value = true
             recomputeVisualState()
+            successPulseJob = controllerScope.launch {
+                delay(durationMs.coerceAtLeast(300L))
+                synchronized(successPulseLock) {
+                    if (revision == successPulseRevision && connectionGen == sessionGeneration.get()) {
+                        _isSuccessPulseActive.value = false
+                        recomputeVisualState()
+                    }
+                }
+            }
         }
     }
 
-    internal fun resetProcessingFlags() {
+    private fun cancelSuccessPulse() = synchronized(successPulseLock) {
+        successPulseRevision++
+        successPulseJob?.cancel()
+        successPulseJob = null
+        _isSuccessPulseActive.value = false
+    }
+
+    internal fun resetProcessingFlags() = synchronized(processingLock) {
+        processingRevision.incrementAndGet()
+        cancelSuccessPulse()
         _isToolLookupActive.value = false
         _activeToolName.value = null
         _isAnalyzingToolData.value = false
         _isPreparingResponse.value = false
         _isModelThinking.value = false
-        _isSuccessPulseActive.value = false
     }
 
     internal fun recomputeVisualState() {
@@ -348,7 +374,8 @@ class DavidLiveSessionController(
             isPlaybackDrained = audioEngine.isPlaybackCurrentlyDrained(),
             isWithinUserSpeechHold = audioEngine.isWithinUserSpeechHold.value,
             isWithinDavidSpeechHold = audioEngine.isWithinDavidSpeechHold.value,
-            isSuccessPulseActive = _isSuccessPulseActive.value,
+            isSuccessPulseActive = _isSuccessPulseActive.value ||
+                (_isReadyFlashActive.value && setupCompleted.get() && _isSessionReady.value),
             failureKind = _failureKind.value,
             debugOverrideState = if (com.example.BuildConfig.DEBUG) _debugOverrideVisualState.value else null
         )
@@ -1448,13 +1475,14 @@ class DavidLiveSessionController(
 
         // 1. Setup Complete — ONLY here is the Gemini Live session genuinely ready!
         if (root.has("setupComplete")) {
+            // Duplicate acknowledgements must not restart the pulse or reset an active turn.
+            if (!setupCompleted.compareAndSet(false, true)) return
             val hasPriorTurns = synchronized(_transcriptTurns) { _transcriptTurns.isNotEmpty() }
             val wasReconnecting = autoReconnectAttempts > 0 ||
                 isManualReconnectInProgress ||
                 _connectionState.value == DavidLiveConnectionState.RECONNECTING ||
                 hasPriorTurns
 
-            setupCompleted.set(true)
             _isSessionReady.value = true
             _failureKind.value = DavidLiveConnectionFailureKind.NONE
             resetProcessingFlags()
@@ -1470,6 +1498,7 @@ class DavidLiveSessionController(
             }
             _visualPhase.value = DavidLiveVisualPhase.READY_FLASH
             _isReadyFlashActive.value = true
+            recomputeVisualState()
             _liveSubtitle.value = when {
                 _isMicMuted.value -> "Микрофон отключён"
                 wasReconnecting -> "Давид на связи. Связь восстановлена — продолжаем разговор."
@@ -1485,6 +1514,7 @@ class DavidLiveSessionController(
                         setupCompleted.get()
                     ) {
                         _isReadyFlashActive.value = false
+                        recomputeVisualState()
                         if (isDavidLiveVoiceCapableState(_connectionState.value)) {
                             _visualPhase.value = DavidLiveVisualPhase.CONVERSATION_ACTIVE
                         }
@@ -1518,6 +1548,8 @@ class DavidLiveSessionController(
             subtitleLifecycle.clear()
             val functionCalls = toolCall.optJSONArray("functionCalls")
             if (functionCalls != null && functionCalls.length() > 0) {
+                resetProcessingFlags()
+                val workRevision = processingRevision.get()
                 unclosedServerPcmTurnActive.set(false)
                 awaitingInterruptedServerTurnClose.set(false)
                 userInterruptedCurrentModelTurn.set(false)
@@ -1534,7 +1566,12 @@ class DavidLiveSessionController(
                 _activeToolName.value = functionCalls.optJSONObject(0)?.optString("name")
                 recomputeVisualState()
                 controllerScope.launch {
-                    if (isStaleCallback(ws, connectionGen)) return@launch
+                    fun isObsolete() = isStaleCallback(ws, connectionGen) ||
+                        processingRevision.get() != workRevision
+                    fun updateCurrentWork(update: () -> Unit): Boolean = synchronized(processingLock) {
+                        if (isObsolete()) false else { update(); true }
+                    }
+                    if (isObsolete()) return@launch
                     val requestedToolNames = mutableSetOf<String>()
                     for (i in 0 until functionCalls.length()) {
                         val fn = functionCalls.optJSONObject(i)?.optString("name").orEmpty()
@@ -1554,11 +1591,13 @@ class DavidLiveSessionController(
                     val companionOutputs = JSONObject()
                     for (comp in companionSpecs) {
                         val compRes = financialToolsProvider.executeToolCall(comp.toolName, comp.args)
+                        if (isObsolete()) return@launch
                         companionOutputs.put(comp.toolName, compRes)
                     }
 
                     val responsesArray = JSONArray()
                     for (i in 0 until functionCalls.length()) {
+                        if (isObsolete()) return@launch
                         val fc = functionCalls.optJSONObject(i) ?: continue
                         val callId = fc.optString("id")
                         val fnName = fc.optString("name")
@@ -1567,9 +1606,12 @@ class DavidLiveSessionController(
                             // Duplicate toolCall ID already processed in this session
                             continue
                         }
-                        _activeToolName.value = fnName
-                        recomputeVisualState()
+                        if (!updateCurrentWork {
+                            _activeToolName.value = fnName
+                            recomputeVisualState()
+                        }) return@launch
                         val toolResult = financialToolsProvider.executeToolCall(fnName, args)
+                        if (isObsolete()) return@launch
                         if (i == 0 && companionOutputs.length() > 0) {
                             toolResult.put("companionToolsOutput", companionOutputs)
                         }
@@ -1586,10 +1628,12 @@ class DavidLiveSessionController(
                             }
                         )
                     }
-                    if (isStaleCallback(ws, connectionGen)) return@launch
+                    if (isObsolete()) return@launch
                     if (responsesArray.length() == 0) {
-                        resetProcessingFlags()
-                        recomputeVisualState()
+                        updateCurrentWork {
+                            resetProcessingFlags()
+                            recomputeVisualState()
+                        }
                         return@launch
                     }
                     val toolResponseMsg = JSONObject().apply {
@@ -1600,11 +1644,13 @@ class DavidLiveSessionController(
                             }
                         )
                     }
-                    _isToolLookupActive.value = false
-                    _activeToolName.value = null
-                    _isAnalyzingToolData.value = true
-                    recomputeVisualState()
-                    ws?.send(toolResponseMsg.toString())
+                    updateCurrentWork {
+                        _isToolLookupActive.value = false
+                        _activeToolName.value = null
+                        _isAnalyzingToolData.value = true
+                        recomputeVisualState()
+                        ws?.send(toolResponseMsg.toString())
+                    }
                 }
             }
             return
@@ -1627,6 +1673,7 @@ class DavidLiveSessionController(
                 )
                 return
             }
+            resetProcessingFlags()
             if (!hasPendingUserTranscript()) subtitleLifecycle.clear()
             audioEngine.setServerTurnSpeakingActive(false)
             unclosedServerPcmTurnActive.set(false)
@@ -1669,6 +1716,7 @@ class DavidLiveSessionController(
             ?.optString("text")
             ?.takeIf { it.isNotEmpty() }
         if (inputTranscription != null) {
+            resetProcessingFlags()
             if (!awaitingInterruptedServerTurnClose.get()) {
                 userInterruptedCurrentModelTurn.set(false)
                 localBargeInEpochMs.set(0L)
@@ -1732,6 +1780,7 @@ class DavidLiveSessionController(
                     audioEngine.enqueuedDavidTurnSamples.value, audioEngine.audibleDavidTurnSamples.value)
                 syncDavidSpokenSubtitleWithAudio()
                 resetProcessingFlags()
+                _isPreparingResponse.value = true
                 recomputeVisualState()
             }
         }
@@ -1751,10 +1800,8 @@ class DavidLiveSessionController(
                 // modelTurn text with outputTranscription in the same turn.
                 val isThoughtPart = isInternalThoughtPart(part)
                 if (isThoughtPart) {
-                    if (_isAnalyzingToolData.value) {
-                        _isAnalyzingToolData.value = false
-                        _isPreparingResponse.value = true
-                    } else if (!_isToolLookupActive.value && !_isPreparingResponse.value) {
+                    _isReadyFlashActive.value = false
+                    if (!_isAnalyzingToolData.value && !_isToolLookupActive.value && !_isPreparingResponse.value) {
                         _isModelThinking.value = true
                     }
                     recomputeVisualState()
@@ -1769,6 +1816,9 @@ class DavidLiveSessionController(
                     val cleanedPart = sanitizeSpokenSubtitle(textPart)
                     if (cleanedPart.isNotBlank()) {
                         subtitleLifecycle.beginDavidTurn()
+                        resetProcessingFlags()
+                        _isPreparingResponse.value = true
+                        recomputeVisualState()
                         unclosedServerPcmTurnActive.set(true)
                         bargeInPendingNewResponse.set(false)
                         bargeInFollowUpWatchdogJob?.cancel()
@@ -1797,6 +1847,9 @@ class DavidLiveSessionController(
                         }
                         if (pcmBytes != null && pcmBytes.isNotEmpty()) {
                             subtitleLifecycle.beginDavidTurn()
+                            resetProcessingFlags()
+                            _isPreparingResponse.value = true
+                            recomputeVisualState()
                             unclosedServerPcmTurnActive.set(true)
                             bargeInPendingNewResponse.set(false)
                             bargeInFollowUpWatchdogJob?.cancel()
