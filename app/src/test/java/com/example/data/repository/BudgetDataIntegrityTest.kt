@@ -195,4 +195,88 @@ class BudgetDataIntegrityTest {
         codec.decode(repository.exportJsonForBudget("default"))
         Unit
     }
+
+    private suspend fun transfer(to: String = "destination", amount: Double = 100.0) {
+        repository.transferBetweenAccounts("default", "account_default", to, amount, "Card", "Cash")
+    }
+
+    @Test
+    fun `valid transfer updates both balances and records notification`() = runBlocking {
+        seed()
+        db.accountDao().insertAccount(AccountEntity(id = "destination", name = "Cash", balance = 200.0))
+        transfer()
+        assertEquals(900.0, db.accountDao().getAccountById("account_default")!!.balance, 0.0)
+        assertEquals(300.0, db.accountDao().getAccountById("destination")!!.balance, 0.0)
+        assertEquals(1, db.notificationDao().getNotificationsByBudgetId("default").first().size)
+    }
+
+    @Test
+    fun `invalid transfers leave balances and notifications intact`() = runBlocking {
+        seed()
+        seed("other")
+        db.accountDao().insertAccount(AccountEntity(id = "destination", name = "Cash", balance = 200.0))
+        for ((to, amount) in listOf(
+            "missing" to 100.0, "account_other" to 100.0, "account_default" to 100.0,
+            "destination" to 0.0, "destination" to -1.0,
+            "destination" to Double.NaN, "destination" to Double.POSITIVE_INFINITY
+        )) {
+            try {
+                transfer(to, amount)
+                fail("Invalid transfer accepted: $to, $amount")
+            } catch (_: IllegalArgumentException) { }
+            assertEquals(1000.0, db.accountDao().getAccountById("account_default")!!.balance, 0.0)
+            assertEquals(200.0, db.accountDao().getAccountById("destination")!!.balance, 0.0)
+            assertEquals(1000.0, db.accountDao().getAccountById("account_other")!!.balance, 0.0)
+            assertTrue(db.notificationDao().getNotificationsByBudgetId("default").first().isEmpty())
+        }
+    }
+
+    @Test
+    fun `second balance write failure rolls back debit`() = runBlocking {
+        seed()
+        db.accountDao().insertAccount(AccountEntity(id = "destination", name = "Cash", balance = 200.0))
+        db.openHelper.writableDatabase.execSQL("""
+            CREATE TRIGGER fail_credit BEFORE UPDATE ON accounts
+            WHEN NEW.id = 'destination'
+            BEGIN SELECT RAISE(ABORT, 'Injected credit failure'); END
+        """.trimIndent())
+        try {
+            transfer()
+            fail("Expected credit failure")
+        } catch (_: android.database.sqlite.SQLiteException) { }
+        assertEquals(1000.0, db.accountDao().getAccountById("account_default")!!.balance, 0.0)
+        assertEquals(200.0, db.accountDao().getAccountById("destination")!!.balance, 0.0)
+        assertTrue(db.notificationDao().getNotificationsByBudgetId("default").first().isEmpty())
+    }
+
+    @Test
+    fun `profile deletion failure restores profile and its transactions`() = runBlocking {
+        val original = seed()
+        val other = seed("other")
+        db.openHelper.writableDatabase.execSQL("""
+            CREATE TRIGGER fail_delete BEFORE DELETE ON accounts
+            WHEN OLD.budgetId = 'default'
+            BEGIN SELECT RAISE(ABORT, 'Injected deletion failure'); END
+        """.trimIndent())
+        try {
+            repository.deleteProfile("default")
+            fail("Expected deletion failure")
+        } catch (_: android.database.sqlite.SQLiteException) { }
+        assertNotNull(db.budgetProfileDao().getProfileById("default"))
+        assertNotNull(db.accountDao().getAccountById("account_default"))
+        assertEquals(listOf(original), db.transactionDao().getTransactionsByBudgetId("default").first())
+        assertEquals(listOf(other), db.transactionDao().getTransactionsByBudgetId("other").first())
+    }
+
+    @Test
+    fun `profile deletion preserves unrelated budget`() = runBlocking {
+        seed()
+        val other = seed("other")
+        repository.deleteProfile("default")
+        assertNull(db.budgetProfileDao().getProfileById("default"))
+        assertNull(db.accountDao().getAccountById("account_default"))
+        assertTrue(db.transactionDao().getTransactionsByBudgetId("default").first().isEmpty())
+        assertNotNull(db.budgetProfileDao().getProfileById("other"))
+        assertEquals(listOf(other), db.transactionDao().getTransactionsByBudgetId("other").first())
+    }
 }
