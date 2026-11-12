@@ -107,6 +107,7 @@ fun DavidChatScreen(
     val liveConnectionState by viewModel.liveConnectionState.collectAsState()
     val liveVisualPhase by viewModel.liveVisualPhase.collectAsState()
     val liveSubtitle by viewModel.liveSubtitle.collectAsState()
+    val liveSubtitleSpeaker by viewModel.liveSubtitleSpeaker.collectAsState()
     val liveRayMagnitudes by viewModel.liveRayMagnitudes.collectAsState()
     val liveOverallEnergy by viewModel.liveOverallEnergy.collectAsState()
     val liveActiveSpeaker by viewModel.liveActiveSpeaker.collectAsState()
@@ -383,6 +384,7 @@ fun DavidChatScreen(
             DavidLiveSheet(
                 connectionState = liveConnectionState,
                 liveSubtitle = liveSubtitle,
+                subtitleSpeaker = liveSubtitleSpeaker,
                 rayMagnitudes = liveRayMagnitudes,
                 overallEnergy = liveOverallEnergy,
                 activeSpeaker = liveActiveSpeaker,
