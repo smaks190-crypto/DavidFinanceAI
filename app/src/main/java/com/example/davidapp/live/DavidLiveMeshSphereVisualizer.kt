@@ -72,6 +72,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -952,6 +953,19 @@ fun DavidLiveMeshSphereVisualizer(
         }
     }
 
+    val financeAccent by animateFloatAsState(
+        if (visualState == DavidLiveVisualState.FINANCE_LOOKUP) 1f else 0f,
+        tween(240), label = "finance_accent"
+    )
+    val analysisAccent by animateFloatAsState(
+        if (visualState == DavidLiveVisualState.ANALYZING) 1f else 0f,
+        tween(240), label = "analysis_accent"
+    )
+    val preparingAccent by animateFloatAsState(
+        if (visualState == DavidLiveVisualState.PREPARING_RESPONSE) 1f else 0f,
+        tween(240), label = "preparing_accent"
+    )
+
     val reusableSphereClipPath = remember { Path() }
     val reusablePlasmaPath = remember { Path() }
     val reusableStreamPath = remember { Path() }
@@ -961,6 +975,9 @@ fun DavidLiveMeshSphereVisualizer(
             .size(visualizerSize)
             .semantics {
                 role = Role.Button
+                stateDescription = DavidLiveVisualStateResolver.resolveMetadata(
+                    visualState, isMicMuted = isMicMuted, activeToolName = activeToolName
+                ).title
                 contentDescription = when (visualState) {
                     DavidLiveVisualState.OFFLINE -> "Связь потеряна. Нажмите на сферу для повторного подключения."
                     DavidLiveVisualState.API_MISSING -> "Требуется API-ключ Gemini. Нажмите для настройки."
@@ -1220,6 +1237,30 @@ fun DavidLiveMeshSphereVisualizer(
                     touchPoint3D = activeTouch3D,
                     touchAttractionStrength = touchAttractionStrength
                 )
+            }
+
+            // Different processing events get different internal accents. Keep the existing
+            // volumetric silhouette, touch interaction and layout; never add external rings.
+            clipPath(reusableSphereClipPath) {
+                if (financeAccent > 0.01f) {
+                    drawPlanetaryFinanceRing(center, dynamicRadius * 0.65f, orbitProgressNormalized,
+                        animatedPrimaryColor, animatedSecondaryColor, financeAccent)
+                }
+                if (analysisAccent > 0.01f) {
+                    drawAnalyzingDualOrbits(center, dynamicRadius * 0.68f, orbitProgressNormalized,
+                        animatedPrimaryColor.copy(alpha = analysisAccent),
+                        animatedSecondaryColor.copy(alpha = analysisAccent))
+                }
+                if (preparingAccent > 0.01f) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(animatedSecondaryColor.copy(alpha = 0.38f * preparingAccent), Color.Transparent),
+                            center, dynamicRadius * (0.50f + 0.12f * breathProgress)
+                        ),
+                        radius = dynamicRadius * (0.50f + 0.12f * breathProgress),
+                        center = center, blendMode = BlendMode.Plus
+                    )
+                }
             }
 
             // Мягкая светящаяся атмосфера вдоль сферического лимба (без внешних дуг и без плоского Stroke-кольца!)
@@ -2017,7 +2058,8 @@ private fun DrawScope.drawPlanetaryFinanceRing(
     radius: Float,
     orbitProgress: Float,
     accentColor: Color,
-    goldColor: Color
+    goldColor: Color,
+    alpha: Float = 1f
 ) {
     val ringRadiusX = radius * 1.38f
     val ringRadiusY = radius * 0.44f
@@ -2027,8 +2069,8 @@ private fun DrawScope.drawPlanetaryFinanceRing(
         drawOval(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    accentColor.copy(alpha = 0.34f),
-                    accentColor.copy(alpha = 0.12f),
+                    accentColor.copy(alpha = 0.34f * alpha),
+                    accentColor.copy(alpha = 0.12f * alpha),
                     Color.Transparent
                 ),
                 center = center,
@@ -2047,9 +2089,9 @@ private fun DrawScope.drawPlanetaryFinanceRing(
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color.White,
-                    goldColor.copy(alpha = 0.92f),
-                    accentColor.copy(alpha = 0.36f),
+                    Color.White.copy(alpha = alpha),
+                    goldColor.copy(alpha = 0.92f * alpha),
+                    accentColor.copy(alpha = 0.36f * alpha),
                     Color.Transparent
                 ),
                 center = Offset(pulseX, pulseY),

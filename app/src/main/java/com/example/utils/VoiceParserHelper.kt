@@ -21,13 +21,13 @@ object VoiceParserHelper {
 
         // 1. Resolve Date
         var dateStr = todayStr
-        if (cleanText.contains("вчера")) {
-            val cal = Calendar.getInstance()
-            cal.add(Calendar.DAY_OF_YEAR, -1)
-            dateStr = sdf.format(cal.time)
-        } else if (cleanText.contains("позавчера")) {
+        if (cleanText.contains("позавчера")) {
             val cal = Calendar.getInstance()
             cal.add(Calendar.DAY_OF_YEAR, -2)
+            dateStr = sdf.format(cal.time)
+        } else if (cleanText.contains("вчера")) {
+            val cal = Calendar.getInstance()
+            cal.add(Calendar.DAY_OF_YEAR, -1)
             dateStr = sdf.format(cal.time)
         }
 

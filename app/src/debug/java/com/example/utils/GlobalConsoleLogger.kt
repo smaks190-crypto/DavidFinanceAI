@@ -236,7 +236,7 @@ object GlobalConsoleLogger {
                 ?.putString(KEY_LAST_CRASH_MESSAGE, summary)
                 ?.putString(KEY_LAST_CRASH_STACK, stack)
                 ?.putString(KEY_LAST_CRASH_TIME, timeStr)
-                ?.putString(KEY_LAST_CRASH_THREAD, thread.name)
+                ?.putString(KEY_LAST_CRASH_THREAD, maskSensitive(thread.name))
                 ?.putString(KEY_LAST_CRASH_OP_ID, opId)
                 ?.commit()
 
@@ -246,7 +246,7 @@ object GlobalConsoleLogger {
                 message = summary,
                 details = "Поток: ${thread.name} | Время: $timeStr",
                 stackTrace = stack,
-                operationId = opId,
+                operationId = maskSensitive(opId),
                 ignorePause = true
             )
         } catch (_: Throwable) {
@@ -256,14 +256,22 @@ object GlobalConsoleLogger {
         }
     }
 
-    private fun restorePreviousSessionCrashIfAny(appContext: Context) {
+    internal fun restorePreviousSessionCrashIfAny(appContext: Context) {
         try {
             val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val msg = prefs.getString(KEY_LAST_CRASH_MESSAGE, null)
-            val stack = prefs.getString(KEY_LAST_CRASH_STACK, null)
-            val timeStr = prefs.getString(KEY_LAST_CRASH_TIME, null)
-            val threadName = prefs.getString(KEY_LAST_CRASH_THREAD, "main")
-            val opId = prefs.getString(KEY_LAST_CRASH_OP_ID, "CRASH-PREV")
+            val msg = prefs.getString(KEY_LAST_CRASH_MESSAGE, null)?.let { maskSensitive(it) }
+            val stack = prefs.getString(KEY_LAST_CRASH_STACK, null)?.let { maskSensitive(it) }
+            val timeStr = prefs.getString(KEY_LAST_CRASH_TIME, null)?.let { maskSensitive(it) }
+            val threadName = prefs.getString(KEY_LAST_CRASH_THREAD, "main")?.let { maskSensitive(it) }
+            val opId = prefs.getString(KEY_LAST_CRASH_OP_ID, "CRASH-PREV")?.let { maskSensitive(it) }
+
+            prefs.edit()
+                .putString(KEY_LAST_CRASH_MESSAGE, msg)
+                .putString(KEY_LAST_CRASH_STACK, stack)
+                .putString(KEY_LAST_CRASH_TIME, timeStr)
+                .putString(KEY_LAST_CRASH_THREAD, threadName)
+                .putString(KEY_LAST_CRASH_OP_ID, opId)
+                .commit()
 
             if (!msg.isNullOrBlank()) {
                 synchronized(lock) {
@@ -279,7 +287,7 @@ object GlobalConsoleLogger {
                             message = "[Прошлая сессия] $msg",
                             details = "Сохранено из предыдущего запуска | Время сбоя: ${timeStr ?: "—"} | Поток: $threadName",
                             stackTrace = stack,
-                            operationId = opId,
+                            operationId = maskSensitive(opId),
                             isPreviousSessionCrash = true
                         )
                         _logs.value = (_logs.value + entry).takeLast(MAX_LOGS)
@@ -343,7 +351,7 @@ object GlobalConsoleLogger {
             message = maskedMsg,
             details = details?.let { maskSensitive(it) },
             stackTrace = null,
-            operationId = operationId
+            operationId = operationId?.let { maskSensitive(it) }
         )
     }
 
@@ -361,7 +369,7 @@ object GlobalConsoleLogger {
             message = maskedMsg,
             details = details?.let { maskSensitive(it) },
             stackTrace = null,
-            operationId = operationId
+            operationId = operationId?.let { maskSensitive(it) }
         )
     }
 
@@ -380,7 +388,7 @@ object GlobalConsoleLogger {
             message = maskedMsg,
             details = details?.let { maskSensitive(it) },
             stackTrace = throwable?.let { maskSensitive(it.stackTraceToString()) },
-            operationId = operationId
+            operationId = operationId?.let { maskSensitive(it) }
         )
     }
 
@@ -408,7 +416,7 @@ object GlobalConsoleLogger {
             message = maskedMsg,
             details = computedDetails,
             stackTrace = computedStack,
-            operationId = operationId,
+            operationId = operationId?.let { maskSensitive(it) },
             ignorePause = true
         )
     }
@@ -437,7 +445,7 @@ object GlobalConsoleLogger {
             message = maskedMsg,
             details = computedDetails,
             stackTrace = computedStack,
-            operationId = operationId,
+            operationId = operationId?.let { maskSensitive(it) },
             ignorePause = true
         )
     }
@@ -479,15 +487,15 @@ object GlobalConsoleLogger {
 
         val trace = NetworkTraceEntry(
             id = idCounter.getAndIncrement(),
-            operationId = opId,
+            operationId = maskSensitive(opId),
             timestamp = formatTime(now),
             epochMillis = now,
             operationType = maskSensitive(operationType),
-            modelName = modelName.ifBlank { "unknown-model" },
+            modelName = maskSensitive(modelName.ifBlank { "unknown-model" }),
             durationMs = durationMs.coerceAtLeast(0L),
             status = status,
             httpCode = httpCode,
-            errorType = errorType,
+            errorType = errorType?.let { maskSensitive(it) },
             errorMessage = maskedError,
             attemptNumber = attemptNumber,
             totalModelsInChain = totalModelsInChain,
@@ -543,11 +551,11 @@ object GlobalConsoleLogger {
 
         val entry = DbOperationEntry(
             id = idCounter.getAndIncrement(),
-            operationId = opId,
+            operationId = maskSensitive(opId),
             timestamp = formatTime(now),
             epochMillis = now,
-            operationName = operationName,
-            tableName = tableName,
+            operationName = maskSensitive(operationName),
+            tableName = maskSensitive(tableName),
             durationMs = durationMs.coerceAtLeast(0L),
             isSuccess = isSuccess,
             details = maskedDetails,
@@ -558,7 +566,7 @@ object GlobalConsoleLogger {
             _dbOperations.value = (_dbOperations.value + entry).takeLast(MAX_DB_OPERATIONS)
             if (!isSuccess && !maskedError.isNullOrBlank()) {
                 _dbSnapshot.value = _dbSnapshot.value.copy(
-                    lastError = "${formatTime(now)}: $operationName ($tableName) — $maskedError",
+                    lastError = maskSensitive("${formatTime(now)}: $operationName ($tableName) — $maskedError"),
                     lastUpdatedTimestamp = formatTime(now)
                 )
             }
@@ -596,8 +604,8 @@ object GlobalConsoleLogger {
                 isInitialized = isInitialized,
                 isOpen = isOpen,
                 schemaVersion = schemaVersion,
-                activeBudgetId = activeBudgetId ?: current.activeBudgetId,
-                tableCounts = tableCounts,
+                activeBudgetId = activeBudgetId?.let { maskSensitive(it) } ?: current.activeBudgetId,
+                tableCounts = tableCounts.mapKeys { maskSensitive(it.key) },
                 lastUpdatedTimestamp = nowStr,
                 lastError = lastError?.let { maskSensitive(it) } ?: current.lastError
             )
@@ -616,13 +624,13 @@ object GlobalConsoleLogger {
         synchronized(lock) {
             val cur = _systemState.value
             _systemState.value = cur.copy(
-                lifecycleState = lifecycleState ?: cur.lifecycleState,
+                lifecycleState = lifecycleState?.let { maskSensitive(it) } ?: cur.lifecycleState,
                 isVoiceRecording = isVoiceRecording ?: cur.isVoiceRecording,
                 isAnalyzingVoice = isAnalyzingVoice ?: cur.isAnalyzingVoice,
                 isAiAuditRunning = isAiAuditRunning ?: cur.isAiAuditRunning,
                 isGeneratingDavidReaction = isGeneratingDavidReaction ?: cur.isGeneratingDavidReaction,
-                activeBudgetId = activeBudgetId ?: cur.activeBudgetId,
-                activeModalName = activeModalName ?: cur.activeModalName
+                activeBudgetId = activeBudgetId?.let { maskSensitive(it) } ?: cur.activeBudgetId,
+                activeModalName = activeModalName?.let { maskSensitive(it) } ?: cur.activeModalName
             )
         }
     }
@@ -932,17 +940,17 @@ object GlobalConsoleLogger {
         }
 
         val now = System.currentTimeMillis()
-        val cleanSource = source.trim().uppercase(Locale.US).ifBlank { "APP" }
+        val cleanSource = maskSensitive(source.trim()).uppercase(Locale.US).ifBlank { "APP" }
         val entry = LogEntry(
             id = idCounter.getAndIncrement(),
             timestamp = formatTime(now),
             epochMillis = now,
             level = canonicalLevel,
             source = cleanSource,
-            message = message,
-            details = details,
-            stackTrace = stackTrace,
-            operationId = operationId
+            message = maskSensitive(message),
+            details = details?.let { maskSensitive(it) },
+            stackTrace = stackTrace?.let { maskSensitive(it) },
+            operationId = operationId?.let { maskSensitive(it) }
         )
 
         synchronized(lock) {
@@ -967,12 +975,16 @@ object GlobalConsoleLogger {
 
     private fun safeLogcat(priority: Int, tag: String, message: String, throwable: Throwable?) {
         try {
-            when (priority) {
-                Log.DEBUG -> Log.d(tag, message)
-                Log.INFO -> Log.i(tag, message)
-                Log.WARN -> if (throwable != null) Log.w(tag, message, throwable) else Log.w(tag, message)
-                Log.ERROR, Log.ASSERT -> if (throwable != null) Log.e(tag, message, throwable) else Log.e(tag, message)
-            }
+            // Never pass the original Throwable to Android's logging overloads.
+            val safeTag = maskSensitive(tag)
+            val safeMessage = maskSensitive(buildString {
+                append(message)
+                if (throwable != null) {
+                    append("\n")
+                    append(throwable.stackTraceToString())
+                }
+            })
+            Log.println(priority, safeTag, safeMessage)
         } catch (_: Throwable) {
             // Безопасное игнорирование в JVM Unit-тестах без Robolectric
         }
