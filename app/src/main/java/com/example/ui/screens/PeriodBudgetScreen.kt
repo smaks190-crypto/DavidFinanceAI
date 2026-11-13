@@ -203,24 +203,11 @@ fun PeriodBudgetScreen(
     onEditTransaction: ((TransactionEntity) -> Unit)? = null,
     onOpenRecentTransactionsScreen: (() -> Unit)? = null
 ) {
-    val monthStart = remember(selectedMonthIdx, selectedYear) {
-        val monthFormatted = String.format(Locale.US, "%02d", selectedMonthIdx + 1)
-        "$selectedYear-$monthFormatted-01"
+    val monthWindow = remember(selectedMonthIdx, selectedYear) {
+        calculatePeriodMonthWindow(selectedMonthIdx, selectedYear)
     }
-
-    val daysInSelectedMonth = remember(selectedMonthIdx, selectedYear) {
-        Calendar.getInstance().apply {
-            set(Calendar.YEAR, selectedYear)
-            set(Calendar.MONTH, selectedMonthIdx)
-            set(Calendar.DAY_OF_MONTH, 1)
-        }.getActualMaximum(Calendar.DAY_OF_MONTH)
-    }
-
-    val monthEnd = remember(selectedMonthIdx, selectedYear, daysInSelectedMonth) {
-        val monthFormatted = String.format(Locale.US, "%02d", selectedMonthIdx + 1)
-        val dayFormatted = String.format(Locale.US, "%02d", daysInSelectedMonth)
-        "$selectedYear-$monthFormatted-$dayFormatted"
-    }
+    val monthStart = monthWindow.start
+    val monthEnd = monthWindow.end
 
     val monthTransactions = remember(allTransactions, monthStart, monthEnd) {
         allTransactions.filter { it.date >= monthStart && it.date <= monthEnd }
@@ -235,9 +222,7 @@ fun PeriodBudgetScreen(
 
     // Previous month comparison (MoM %)
     val (prevMonthIncome, prevMonthExpense) = remember(allTransactions, selectedMonthIdx, selectedYear) {
-        val prevIdx = if (selectedMonthIdx > 0) selectedMonthIdx - 1 else 11
-        val prevYear = if (selectedMonthIdx > 0) selectedYear else selectedYear - 1
-        val prevPrefix = String.format(Locale.US, "%04d-%02d", prevYear, prevIdx + 1)
+        val prevPrefix = monthWindow.previousMonthPrefix
         val prevTxs = allTransactions.filter { it.date.startsWith(prevPrefix) }
         val pInc = prevTxs.filter { it.type == "income" }.sumOf { it.amount }
         val pExp = prevTxs.filter { it.type == "expense" }.sumOf { it.amount }
@@ -354,9 +339,7 @@ fun PeriodBudgetScreen(
     }
     val prevMonthPeriodSemantics = remember(allTransactions, filteredTransactions, selectedMonthIdx, selectedYear, accountsList) {
         val txSource = if (allTransactions.isNotEmpty()) allTransactions else filteredTransactions
-        val prevIdx = if (selectedMonthIdx > 0) selectedMonthIdx - 1 else 11
-        val prevYear = if (selectedMonthIdx > 0) selectedYear else selectedYear - 1
-        val prevPrefix = String.format(Locale.US, "%04d-%02d", prevYear, prevIdx + 1)
+        val prevPrefix = monthWindow.previousMonthPrefix
         val prevTxs = allTransactions.filter { it.date.startsWith(prevPrefix) }
         com.example.data.repository.FinancialSemanticsCalculator.calculateSnapshot(
             allTransactions = txSource,
