@@ -48,7 +48,7 @@ jobs:
             adb shell input keyevent 82
             adb shell wm dismiss-keyguard
             adb shell am force-stop com.android.launcher3
-            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.ui.components.BudgetDocumentImportUiTest,com.example.davidapp.live.DavidLivePresentationUiTest
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.ui.components.BudgetDocumentImportUiTest,com.example.davidapp.live.DavidLivePresentationUiTest,com.example.ui.components.SingleDatePickerContentUiTest
       - name: Collect screenshots
         if: always()
         run: adb pull /sdcard/Download/release-screenshots screenshots || true
