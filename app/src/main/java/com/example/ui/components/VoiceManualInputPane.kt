@@ -66,6 +66,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.db.CategoryEntity
@@ -99,7 +100,8 @@ fun VoiceManualInputPane(
     initialType: String,
     contentAlpha: Float,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    calendarHeight: Dp = 490.dp
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -206,6 +208,7 @@ fun VoiceManualInputPane(
         ManualInlineDatePickerTransition(
             isDatePickerVisible = showDatePicker,
             date = date,
+            calendarHeight = calendarHeight,
             onDismissDatePicker = { showDatePicker = false },
             onConfirmDatePicker = { selected ->
                 date = selected

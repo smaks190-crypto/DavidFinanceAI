@@ -15,3 +15,7 @@
 ## Incremental UX verification (stage 5)
 
 The existing manual-entry AnimatedContent should be extracted as a single stateless presentation host, with no new Calendar logic. This allows tests to render the exact transition with a lightweight synthetic form that retains an amount and a description while the calendar is shown. The host must not own or mutate financial operation data. Date confirmation is the only path for a date value to leave the calendar. These synthetic UI tests are *not* a substitute for an on-device integration test with the real BudgetViewModel.
+
+## Stage 6 — Responsive modal height
+
+For manual input only, the calendar keeps its original 490.dp height on large viewports, but contracts to the actual measured capsule area when smaller. The parent capsule already owns a bounded BoxWithConstraints. Since its inner manual form is vertically scrollable, the available height must be measured *before* the scrolling subtree, then passed down as a UI-only Dp value. The calendar's month list is the flexible weighted child, while its confirmation button remains at the bottom. Preserve legacy full-screen date picker users and do not change finance or API behavior.

@@ -84,3 +84,29 @@
 **Risks:** animated content can temporarily render outgoing and incoming subtrees during transitions; maintain state outside the switch and avoid changing parent modal layout. The existing fixed 490dp calendar height is unchanged in this step; responsiveness requires a separate measured UI pass.
 
 **Licensing:** original project code moved only, no external GPL/AGPL/Apache code borrowed.
+
+## Stage 6 — Calendar height measured from the capsule's available viewport
+
+**Approval:** user requested to proceed after stage-6 proposal, without merging PR #107.
+
+**Facts:** `MorphingBottomBar` already measures the visible window in a top-level `BoxWithConstraints` and calculates `fullModalHeight`. Its manual entry is wrapped in `heightIn(max = 540.dp).verticalScroll(...)`; a height measurement *inside* that scrolling subtree is unbounded. `ManualInlineDatePickerTransition` currently forces `.height(490.dp)`.
+
+**Alternatives:** (1) Use `LocalConfiguration.screenHeightDp` inside the calendar (rejected: not the actual viewport; IME/split screen risk); (2) add a nested `BoxWithConstraints` below `verticalScroll` (rejected: infinite height constraints); (3) pass the already measured parent viewport cap (chosen: minimal, deterministic).
+
+**Files and responsibilities:**
+- `MorphingBottomBar.kt`: compute `manualInlineCalendarHeight(minOf(maxHeight, fullModalHeight))` *outside* verticalScroll, pass it to manual input. No changes to other modal cases.
+- `VoiceManualInputPane.kt`: forward optional `calendarHeight`, preserving existing call signatures.
+- `ManualInlineDatePickerTransition.kt`: replace fixed height with supplied Dp; keep default 490 dp and define a pure bound function `manualInlineCalendarHeight(availableHeight)` clamped 0..490.
+- `SingleDatePickerContentUiTest.kt`: add a bound function test and a clipped compact-height 320.dp viewport test with a visible, clickable confirmation button.
+- Add this plan/spec note; no new Gradle module or service.
+
+**Invariants:** normal screens remain at 490 dp; single reusable calendar and its scrollable LazyColumn preserved; button remains inside bounded height; open/close duration, field state, Room, Safe-to-Spend, Gemini, permissions, and write confirmation unchanged. No extra Gemini calls or third-party licensed code.
+
+**Risks:** extremely small screens might leave too little height for the month list, even while the bottom button remains; IME resize can change the parent height during keyboard dismissal; long captions/accessibility scaling need physical-device verification.
+
+**Tests and validation:**
+- [ ] RED: test-only source does not compile against old code because the new function/parameter is absent. Android SDK not installed locally, so no executed Android RED claim.
+- [ ] GREEN: `:app:assembleDebug` and `:app:assembleDebugAndroidTest` for final SHA; check Kotlin errors.
+- [ ] Run 8 `SingleDatePickerContentUiTest` on emulator, inspect XML test count and 0 errors/failures.
+- [ ] On phone check split screen, IME, long month scroll, cancel/confirm, rapid taps, amount/description preserved, normal full-screen date dialog and offline.
+- [ ] Diff and main unchanged; PR stays draft. Avoid rerunning older CI unnecessarily.

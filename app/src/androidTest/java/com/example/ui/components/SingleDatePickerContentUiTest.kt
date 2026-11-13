@@ -10,10 +10,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -195,5 +197,39 @@ class SingleDatePickerContentUiTest {
         rule.onNodeWithTag("draft_amount").assertTextEquals("1250")
         rule.onNodeWithTag("draft_description").assertTextEquals("Покупка продуктов")
         rule.runOnIdle { assertEquals("2026-11-14", date) }
+    }
+
+    @Test fun calendarHeightIsLimitedByAvailableSpace() {
+        assertEquals(490.dp, manualInlineCalendarHeight(800.dp))
+        assertEquals(490.dp, manualInlineCalendarHeight(490.dp))
+        assertEquals(375.dp, manualInlineCalendarHeight(375.dp))
+        assertEquals(0.dp, manualInlineCalendarHeight((-20).dp))
+    }
+
+    @Test fun compactHeightKeepsConfirmationButtonInsideCalendar() {
+        val compactHeight = 320.dp
+        var confirmed: String? = null
+        rule.setContent {
+            Box(Modifier.height(compactHeight).clipToBounds()) {
+                ManualInlineDatePickerTransition(
+                    isDatePickerVisible = true,
+                    date = "2026-11-13",
+                    calendarHeight = manualInlineCalendarHeight(compactHeight),
+                    onDismissDatePicker = {},
+                    onConfirmDatePicker = { confirmed = it }
+                ) { Text("Форма") }
+            }
+        }
+
+        val calendar = rule.onNodeWithTag("manual_inline_calendar").assertIsDisplayed()
+        val bounds = calendar.getUnclippedBoundsInRoot()
+        assertTrue("Calendar exceeds compact viewport", bounds.height <= compactHeight)
+        val button = rule.onNodeWithText("Выбрать дату").assertIsDisplayed()
+        assertTrue(
+            "Confirm button is outside the calendar",
+            button.getUnclippedBoundsInRoot().bottom <= bounds.bottom
+        )
+        button.performClick()
+        rule.runOnIdle { assertEquals("2026-11-13", confirmed) }
     }
 }

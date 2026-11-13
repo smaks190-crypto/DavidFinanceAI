@@ -13,7 +13,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+
+/**
+ * The bottom capsule supplies its measured available height (before scrolling).
+ * The original calendar height is retained whenever there is enough room.
+ */
+internal fun manualInlineCalendarHeight(availableHeight: Dp): Dp =
+    availableHeight.coerceIn(0.dp, 490.dp)
 
 /**
  * Changes only the visible content of manual entry; the caller retains every draft field.
@@ -25,6 +33,7 @@ internal fun ManualInlineDatePickerTransition(
     date: String,
     onDismissDatePicker: () -> Unit,
     onConfirmDatePicker: (String) -> Unit,
+    calendarHeight: Dp = 490.dp,
     formContent: @Composable () -> Unit
 ) {
     AnimatedContent(
@@ -43,7 +52,7 @@ internal fun ManualInlineDatePickerTransition(
                 onConfirm = onConfirmDatePicker,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(490.dp)
+                    .height(calendarHeight)
                     .testTag("manual_inline_calendar"),
                 embedded = true
             )
