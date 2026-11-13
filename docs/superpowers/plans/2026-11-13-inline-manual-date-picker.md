@@ -58,3 +58,29 @@
 - [ ] Inspect XML test count 4, failures 0.
 - [ ] On-device verify TalkBack announces date and selection, and that manual input survives cancel/confirm and offline operation.
 - [ ] Keep this PR draft, do not merge.
+
+## Stage 5: Exercise the actual manual-entry transition, not just the calendar body
+
+**Facts:** the previous four UI tests cover `SingleDatePickerContent` (calendar itself), not `AnimatedContent` from manual operation entry. The manual operation form keeps amount, description, category and selected date in `remember` outside the animated branch.
+
+**Why:** a future refactor could accidentally move manual draft state inside the branch and silently clear it. Also, the 900+-line `VoiceManualInputPane.kt` embeds both a complex form and the calendar transition.
+
+**Minimal refactor:** extract just the existing transition markup, with identical timing, dimensions and callbacks, into `ManualInlineDatePickerTransition.kt`. Keep its input state and `BackHandler` in `VoiceManualInputPane`. No new calendar or service. Expose a `formContent` composable slot and the same `SingleDatePickerContent` as before.
+
+**Files:**
+- Add `app/src/main/java/com/example/ui/components/ManualInlineDatePickerTransition.kt`
+- Modify `app/src/main/java/com/example/ui/components/VoiceManualInputPane.kt` (delegate existing transition only)
+- Modify `app/src/androidTest/java/com/example/ui/components/SingleDatePickerContentUiTest.kt` (two additional host tests)
+- Update this plan; no change in Room or `AddTransactionDialog.kt`
+
+**Tests:**
+- [ ] Code precondition / RED: new tests call `ManualInlineDatePickerTransition`, which does not exist in previous SHA; local Android SDK unavailable, so Android RED run cannot be claimed.
+- [ ] GREEN: compile `:app:assembleDebug :app:assembleDebugAndroidTest`.
+- [ ] Emulator: six `SingleDatePickerContentUiTest` cases, with two host tests that click calendar, choose another date, cancel/confirm, and assert unchanged amount/description.
+- [ ] Phone: fill draft, open picker twice, verify no second Dialog and no data loss or duplicate transaction.
+- [ ] Small screen: confirm bottom action remains reachable and no IME overflow.
+- [ ] Offline and Gemini: unchanged, zero added calls.
+
+**Risks:** animated content can temporarily render outgoing and incoming subtrees during transitions; maintain state outside the switch and avoid changing parent modal layout. The existing fixed 490dp calendar height is unchanged in this step; responsiveness requires a separate measured UI pass.
+
+**Licensing:** original project code moved only, no external GPL/AGPL/Apache code borrowed.

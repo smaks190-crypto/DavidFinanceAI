@@ -11,3 +11,7 @@
 **Constraints:** No Room/migrations, financial math, Gemini, David Live or existing financial write flow modifications. No third-party code copied, no new network/API usage. Old full-screen date picker remains for other callers.
 
 **Risks:** Small-screen height, keyboard insets, parent swipe-to-dismiss gestures, changing focus, old full-screen dialog regressions, calendar month range current year +/-1. Manual and instrumented UI checks mandatory before merge.
+
+## Incremental UX verification (stage 5)
+
+The existing manual-entry AnimatedContent should be extracted as a single stateless presentation host, with no new Calendar logic. This allows tests to render the exact transition with a lightweight synthetic form that retains an amount and a description while the calendar is shown. The host must not own or mutate financial operation data. Date confirmation is the only path for a date value to leave the calendar. These synthetic UI tests are *not* a substitute for an on-device integration test with the real BudgetViewModel.

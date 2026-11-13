@@ -1,9 +1,19 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -108,5 +118,82 @@ class SingleDatePickerContentUiTest {
             assertTrue("Back should close only date selection", dismissed)
             assertEquals("Unconfirmed day must not be applied", null, confirmed)
         }
+    }
+
+    @Test fun manualTransitionRetainsDraftAfterCancellingDate() {
+        var isCalendarVisible by mutableStateOf(false)
+        var draftAmount by mutableStateOf("1250")
+        var draftDescription by mutableStateOf("Покупка продуктов")
+        var date by mutableStateOf("2026-11-13")
+        rule.setContent {
+            ManualInlineDatePickerTransition(
+                isDatePickerVisible = isCalendarVisible,
+                date = date,
+                onDismissDatePicker = { isCalendarVisible = false },
+                onConfirmDatePicker = { date = it; isCalendarVisible = false }
+            ) {
+                Column {
+                    BasicTextField(
+                        value = draftAmount,
+                        onValueChange = { draftAmount = it },
+                        modifier = Modifier.testTag("draft_amount")
+                    )
+                    BasicTextField(
+                        value = draftDescription,
+                        onValueChange = { draftDescription = it },
+                        modifier = Modifier.testTag("draft_description")
+                    )
+                    Button(onClick = { isCalendarVisible = true }) {
+                        Text("Открыть календарь")
+                    }
+                }
+            }
+        }
+        rule.onNodeWithTag("draft_amount").assertTextEquals("1250")
+        rule.onNodeWithTag("draft_description").assertTextEquals("Покупка продуктов")
+        rule.onNodeWithText("Открыть календарь").performClick()
+        rule.onNodeWithTag("manual_inline_calendar").assertIsDisplayed()
+        rule.onNodeWithTag("calendar_day_2026-11-14").performClick()
+        rule.onNodeWithContentDescription("Назад").performClick()
+        rule.onNodeWithTag("draft_amount").assertTextEquals("1250")
+        rule.onNodeWithTag("draft_description").assertTextEquals("Покупка продуктов")
+        rule.runOnIdle { assertEquals("2026-11-13", date) }
+    }
+
+    @Test fun manualTransitionAppliesDateOnlyOnConfirm() {
+        var isCalendarVisible by mutableStateOf(false)
+        var draftAmount by mutableStateOf("1250")
+        var draftDescription by mutableStateOf("Покупка продуктов")
+        var date by mutableStateOf("2026-11-13")
+        rule.setContent {
+            ManualInlineDatePickerTransition(
+                isDatePickerVisible = isCalendarVisible,
+                date = date,
+                onDismissDatePicker = { isCalendarVisible = false },
+                onConfirmDatePicker = { date = it; isCalendarVisible = false }
+            ) {
+                Column {
+                    BasicTextField(
+                        value = draftAmount,
+                        onValueChange = { draftAmount = it },
+                        modifier = Modifier.testTag("draft_amount")
+                    )
+                    BasicTextField(
+                        value = draftDescription,
+                        onValueChange = { draftDescription = it },
+                        modifier = Modifier.testTag("draft_description")
+                    )
+                    Button(onClick = { isCalendarVisible = true }) {
+                        Text("Открыть календарь")
+                    }
+                }
+            }
+        }
+        rule.onNodeWithText("Открыть календарь").performClick()
+        rule.onNodeWithTag("calendar_day_2026-11-14").performClick()
+        rule.onNodeWithText("Выбрать дату").performClick()
+        rule.onNodeWithTag("draft_amount").assertTextEquals("1250")
+        rule.onNodeWithTag("draft_description").assertTextEquals("Покупка продуктов")
+        rule.runOnIdle { assertEquals("2026-11-14", date) }
     }
 }

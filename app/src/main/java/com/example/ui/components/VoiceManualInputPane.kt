@@ -2,13 +2,6 @@ package com.example.ui.components
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -210,30 +203,15 @@ fun VoiceManualInputPane(
                 )
         )
 
-        AnimatedContent(
-            targetState = showDatePicker,
-            transitionSpec = {
-                (fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 8 }) togetherWith
-                    (fadeOut(tween(150)) + slideOutHorizontally(tween(200)) { -it / 8 }) using
-                    SizeTransform(clip = false)
-            },
-            label = "manual_inline_date_transition"
-        ) { calendarVisible ->
-            if (calendarVisible) {
-                SingleDatePickerContent(
-                    initialDate = date,
-                    onDismiss = { showDatePicker = false },
-                    onConfirm = { selected ->
-                        date = selected
-                        showDatePicker = false
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(490.dp)
-                        .testTag("manual_inline_calendar"),
-                    embedded = true
-                )
-            } else {
+        ManualInlineDatePickerTransition(
+            isDatePickerVisible = showDatePicker,
+            date = date,
+            onDismissDatePicker = { showDatePicker = false },
+            onConfirmDatePicker = { selected ->
+                date = selected
+                showDatePicker = false
+            }
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -770,7 +748,6 @@ fun VoiceManualInputPane(
                 }
             }
         }
-            }
         }
     }
 }
