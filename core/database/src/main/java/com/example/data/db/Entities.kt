@@ -45,7 +45,16 @@ data class TransactionEntity(
     val category: String,
     val subcategory: String,
     val amount: Double,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val cashAccountId: String? = null
+)
+
+@Entity(tableName = "confirmed_financial_operations")
+data class ConfirmedFinancialOperationEntity(
+    @PrimaryKey val id: String,
+    val budgetId: String,
+    val fingerprint: String,
+    val operationDate: String
 )
 
 @Entity(tableName = "goals")

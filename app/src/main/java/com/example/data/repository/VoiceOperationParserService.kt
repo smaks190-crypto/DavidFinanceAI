@@ -231,6 +231,7 @@ class VoiceOperationParserService(
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 val err = GeminiModelConfig.extractHttpErrorDetails(e)
                 lastError = err.userMessage
                 val isLastOrFatal = err.isFatalForAllModels || attempt >= modelsToTry.size
@@ -384,6 +385,7 @@ class VoiceOperationParserService(
                         )
                     }
                 } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                     if (e is kotlinx.coroutines.CancellationException) throw e
                     val err = GeminiModelConfig.extractHttpErrorDetails(e)
                     lastError = err.userMessage
@@ -418,7 +420,13 @@ data class ParsedVoiceOperation(
     val amount: Double,
     val category: String,
     val subcategory: String = "",
-    val date: String = ""
+    val date: String = "",
+    val financialKind: FinancialOperationKind = FinancialOperationKind.TRANSACTION,
+    val cashAccountId: String? = null,
+    val destinationAccountId: String? = null,
+    val debtId: String? = null,
+    val counterparty: String = "",
+    val requiresCashAccount: Boolean = false
 )
 
 private fun String?.isNull_or_Empty(): Boolean = this == null || this.isEmpty()
