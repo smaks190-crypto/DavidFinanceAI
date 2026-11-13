@@ -97,7 +97,7 @@ class DavidLiveFinancialConfirmationTest {
         }
     }
 
-    @Test fun partialInterruptedAndDebtTurnsDoNotBecomeExpenses() = runTest {
+    @Test fun partialInterruptedAndAmbiguousTransfersDoNotBecomeExpenses() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val app = ApplicationProvider.getApplicationContext<Application>()
         val vm = DavidViewModel(app)
@@ -107,8 +107,8 @@ class DavidLiveFinancialConfirmationTest {
                 text = "Потратил 450 рублей на продукты", isFinal = false)
             vm.liveSessionController.onTranscriptTurnsChanged?.invoke(listOf(
                 base, base.copy(id = "interrupted", isFinal = true, wasInterrupted = true),
-                base.copy(id = "debt", isFinal = true, text = "Вернул долг 450 рублей"),
-                base.copy(id = "transfer", isFinal = true, text = "Перевёл 450 рублей со счета на счет")
+                base.copy(id = "debt", isFinal = true, text = "Что если вернуть долг 450 рублей"),
+                base.copy(id = "transfer", isFinal = true, text = "Перевод 450 рублей")
             ))
             advanceUntilIdle()
             assertNull(vm.pendingLiveOperation.value)
@@ -160,13 +160,37 @@ class DavidLiveFinancialConfirmationTest {
             vm.liveSessionController.onTranscriptTurnsChanged?.invoke(listOf(
                 turn.copy(text = "Вернул долг 450 рублей")
             ))
-            assertNull(vm.pendingLiveOperation.value)
+            val corrected = withTimeout(5_000) { vm.pendingLiveOperation.filterNotNull().first() }
+            assertEquals(com.example.data.repository.FinancialOperationKind.REPAY_WE_OWE,
+                (corrected?.type as? ChatMessageType.ParsedTransactionProposal)?.operation?.financialKind)
             vm.confirmChatProposedOperation(proposal.id)
             assertTrue(db.transactionDao().getAllTransactions().first().isEmpty())
         } finally {
             store.clear()
             Dispatchers.resetMain()
         }
+    }
+
+
+    @Test fun debtDeclarationRequiresConfirmationAndCreatesNoIncome() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val db = AppDatabase.getDatabase(app)
+        withContext(Dispatchers.IO) { db.clearAllTables() }
+        val vm = DavidViewModel(app)
+        val store = ViewModelStore().apply { put("test", vm) }
+        try {
+            vm.liveSessionController.recordTranscriptTurn(DavidLiveSpeaker.USER, "Я должен Ивану 500 рублей")
+            val proposal = withTimeout(5_000) { vm.pendingLiveOperation.filterNotNull().first() }
+            assertTrue(db.accountDao().getAllAccounts().first().isEmpty())
+            vm.confirmChatProposedOperation(proposal.id)
+            withTimeout(5_000) { vm.messages.first { messages -> messages.any {
+                it.id == proposal.id && (it.type as? ChatMessageType.ParsedTransactionProposal)?.isAdded == true
+            } } }
+            assertEquals("we_owe", db.accountDao().getAllAccounts().first().single().type)
+            assertEquals(500.0, db.accountDao().getAllAccounts().first().single().balance, 0.0)
+            assertTrue(db.transactionDao().getAllTransactions().first().isEmpty())
+        } finally { store.clear(); Dispatchers.resetMain() }
     }
 
 }

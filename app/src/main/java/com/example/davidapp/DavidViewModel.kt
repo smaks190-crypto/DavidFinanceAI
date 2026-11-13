@@ -1,5 +1,8 @@
 package com.example.davidapp
 
+import com.example.data.repository.FinancialOperationKind
+import com.example.data.repository.ParsedVoiceOperation
+import com.example.davidapp.live.DavidLiveFinancialOperationParser
 import com.example.davidapp.live.DavidLiveOperationCommand
 
 import kotlinx.coroutines.sync.withLock
@@ -173,6 +176,11 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
     private val _savingOperationId = MutableStateFlow<String?>(null)
     val savingOperationId = _savingOperationId.asStateFlow()
     private val processedLiveOperationTurns = mutableMapOf<String, String>()
+    private val _liveOperationAccounts = MutableStateFlow<List<com.example.data.db.AccountEntity>>(emptyList())
+    val liveOperationAccounts = _liveOperationAccounts.asStateFlow()
+    private val _liveOperationClarification = MutableStateFlow<String?>(null)
+    val liveOperationClarification = _liveOperationClarification.asStateFlow()
+    fun dismissLiveOperationClarification() { _liveOperationClarification.value = null }
     private val _pendingLiveOperation = MutableStateFlow<ChatMessage?>(null)
     val pendingLiveOperation = _pendingLiveOperation.asStateFlow()
     private val _liveOperationError = MutableStateFlow<String?>(null)
@@ -229,6 +237,8 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
 
         if (isDifferentBudget || notificationsJob == null) {
             _pendingLiveOperation.value = null
+            _liveOperationClarification.value = null
+            _liveOperationAccounts.value = emptyList()
             _liveOperationError.value = null
             processedLiveOperationTurns.clear()
             sessionMessages.clear()
@@ -717,12 +727,21 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     continue
                 }
-                // Never infer a transfer or a debt as ordinary income/expense.
-                if (Regex("перев[ео]|долг|долж|погас|погаш|со сч[её]та|на сч[её]т", RegexOption.IGNORE_CASE).containsMatchIn(turn.text)) continue
-                val operation = tryParseOperationFromChat(turn.text) ?: continue
+                val parsed = when (val result = DavidLiveFinancialOperationParser.parse(turn.text)) {
+                    DavidLiveFinancialOperationParser.Result.Ordinary -> tryParseOperationFromChat(turn.text) ?: continue
+                    is DavidLiveFinancialOperationParser.Result.Draft -> result.operation
+                    is DavidLiveFinancialOperationParser.Result.Clarify -> {
+                        _liveOperationClarification.value = result.message
+                        continue
+                    }
+                }
+                val accounts = repository.getAccountsForBudget(budgetId).first()
+                val operation = DavidLiveFinancialOperationParser.resolveAccounts(parsed, turn.text, accounts)
                 if (processedLiveOperationTurns[turn.id] != turn.text) continue
                 if (currentBudgetId != budgetId || profileGeneration != generation) return@launch
                 if (_savingOperationId.value == "live-proposal:${turn.id}") continue
+                _liveOperationAccounts.value = accounts
+                _liveOperationClarification.value = null
                 val message = ChatMessage(
                     id = "live-proposal:${turn.id}", sender = "Давид Жабов 🐸",
                     type = ChatMessageType.ParsedTransactionProposal(operation, false),
@@ -740,6 +759,20 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    fun updatePendingLiveOperation(operation: ParsedVoiceOperation) {
+        val message = _pendingLiveOperation.value ?: return
+        if (_savingOperationId.value == message.id) return
+        val proposal = message.type as? ChatMessageType.ParsedTransactionProposal ?: return
+        if (proposal.isAdded || operation.financialKind != proposal.operation.financialKind) return
+        val updated = message.copy(type = proposal.copy(operation = operation))
+        val index = sessionMessages.indexOfFirst { it.id == message.id }
+        if (index < 0) return
+        sessionMessages[index] = updated
+        _pendingLiveOperation.value = updated
+        _liveOperationError.value = null
+        rebuildChronologicalMessages()
     }
 
     private fun advanceLiveOperation(messageId: String) {
@@ -765,21 +798,12 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
                 val proposal = msg.type as? ChatMessageType.ParsedTransactionProposal ?: return@withLock
                 if (proposal.isAdded) return@withLock
                 val op = proposal.operation
-                if (op.type !in setOf("income", "expense") || !op.amount.isFinite() || op.amount <= 0) return@withLock
-                val transaction = TransactionEntity(
-                    id = java.util.UUID.nameUUIDFromBytes(
-                        "chat-confirmation:$confirmationBudgetId:$messageId".toByteArray(Charsets.UTF_8)
-                    ).toString(),
-                    budgetId = confirmationBudgetId,
-                    type = op.type,
-                    date = op.date.ifBlank { isoFormat.format(Date()) },
-                    category = op.category.ifBlank { "Прочее" },
-                    subcategory = op.subcategory.ifBlank { op.title.ifBlank { op.category } },
-                    amount = op.amount
-                )
+                val confirmationId = java.util.UUID.nameUUIDFromBytes(
+                    "chat-confirmation:$confirmationBudgetId:$messageId".toByteArray(Charsets.UTF_8)
+                ).toString()
                 _savingOperationId.value = messageId
                 try {
-                    val inserted = repository.insertConfirmedTransaction(transaction)
+                    val inserted = repository.confirmFinancialOperation(confirmationId, confirmationBudgetId, op.copy(date = op.date.ifBlank { isoFormat.format(Date()) }))
                     if (currentBudgetId != confirmationBudgetId || profileGeneration != generation) return@withLock
                     val currentIndex = sessionMessages.indexOfFirst { it.id == messageId }
                     if (currentIndex >= 0) {
@@ -791,7 +815,7 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
                         if (soundManager != null) soundManager.playTransactionCoins()
                         else SoundManager.playTransactionCoins(getApplication())
                         val appCtx = getApplication<Application>()
-                        if (op.type == "expense" && com.example.notifications.ReminderManager.isCroakAlertEnabled(appCtx)) {
+                        if (op.financialKind == FinancialOperationKind.TRANSACTION && op.type == "expense" && com.example.notifications.ReminderManager.isCroakAlertEnabled(appCtx)) {
                             val baseThreshold = com.example.notifications.ReminderManager.getCroakThresholdAmount(appCtx)
                             if (op.amount >= baseThreshold) {
                                 com.example.notifications.ReminderManager.triggerCroakAlertNotification(
@@ -806,9 +830,10 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
-                } catch (_: Exception) {
+                } catch (error: Exception) {
                     if (currentBudgetId == confirmationBudgetId && profileGeneration == generation) {
-                        _liveOperationError.value = "Сохранение не подтверждено. Можно безопасно повторить попытку."
+                        _liveOperationError.value = if (error is IllegalArgumentException) error.message ?: "Проверьте поля операции"
+                            else "Сохранение не подтверждено. Можно безопасно повторить попытку."
                         addSessionMessage(ChatMessage(
                             sender = "Давид Жабов 🐸",
                             type = ChatMessageType.Text("Не удалось подтвердить сохранение. Повторите попытку — повторная запись защищена от дублей."),

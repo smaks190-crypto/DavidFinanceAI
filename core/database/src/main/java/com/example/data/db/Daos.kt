@@ -230,3 +230,19 @@ interface RecurringPaymentDao {
     @Query("DELETE FROM recurring_execution_logs")
     suspend fun deleteAllExecutionLogs()
 }
+
+
+@Dao
+interface ConfirmedFinancialOperationDao {
+    @Query("DELETE FROM confirmed_financial_operations WHERE budgetId = :budgetId")
+    suspend fun deleteForBudget(budgetId: String)
+
+    @Query("DELETE FROM confirmed_financial_operations")
+    suspend fun deleteAll()
+
+    @Query("SELECT * FROM confirmed_financial_operations WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): ConfirmedFinancialOperationEntity?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(operation: ConfirmedFinancialOperationEntity)
+}

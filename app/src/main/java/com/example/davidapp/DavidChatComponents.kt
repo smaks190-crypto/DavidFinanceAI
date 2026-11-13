@@ -797,7 +797,7 @@ fun DavidParsedTransactionProposalBubble(
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "${if (isExpense) "-" else "+"}${formatRublesCompact(tx.amount)} ₽",
+                    text = "${if (tx.financialKind.isDeclaration || tx.financialKind == com.example.data.repository.FinancialOperationKind.TRANSFER) "" else if (isExpense) "-" else "+"}${formatRublesCompact(tx.amount)} ₽",
                     fontFamily = SpaceGroteskFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,

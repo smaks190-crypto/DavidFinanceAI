@@ -159,6 +159,13 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE transactions ADD COLUMN cashAccountId TEXT DEFAULT NULL")
+        db.execSQL("CREATE TABLE IF NOT EXISTS confirmed_financial_operations (id TEXT NOT NULL PRIMARY KEY, budgetId TEXT NOT NULL, fingerprint TEXT NOT NULL, operationDate TEXT NOT NULL)")
+    }
+}
+
 @Database(
     entities = [
         BudgetProfileEntity::class,
@@ -169,9 +176,10 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
         CategoryEntity::class,
         AiAuditEntity::class,
         RecurringPaymentEntity::class,
-        RecurringExecutionLogEntity::class
+        RecurringExecutionLogEntity::class,
+        ConfirmedFinancialOperationEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -182,6 +190,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun goalDao(): GoalDao
     abstract fun categoryDao(): CategoryDao
     abstract fun aiAuditDao(): AiAuditDao
+    abstract fun confirmedFinancialOperationDao(): ConfirmedFinancialOperationDao
     abstract fun recurringPaymentDao(): RecurringPaymentDao
 
 
@@ -196,7 +205,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "budget_database"
                 )
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
                 INSTANCE = instance
                 instance
