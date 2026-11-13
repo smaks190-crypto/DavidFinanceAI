@@ -223,7 +223,7 @@ class SingleDatePickerContentUiTest {
 
         val calendar = rule.onNodeWithTag("manual_inline_calendar").assertIsDisplayed()
         val bounds = calendar.getUnclippedBoundsInRoot()
-        assertTrue("Calendar exceeds compact viewport", bounds.height <= compactHeight)
+        assertTrue("Calendar exceeds compact viewport", (bounds.bottom - bounds.top) <= compactHeight)
         val button = rule.onNodeWithText("Выбрать дату").assertIsDisplayed()
         assertTrue(
             "Confirm button is outside the calendar",
