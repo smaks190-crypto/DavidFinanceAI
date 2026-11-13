@@ -293,6 +293,8 @@ ${if (expenses.isNotEmpty()) "Твоя главная финансовая сл�
 
         val cats = try {
             repository.getCategoriesForBudget(currentBudgetId).first()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             emptyList()
         }
