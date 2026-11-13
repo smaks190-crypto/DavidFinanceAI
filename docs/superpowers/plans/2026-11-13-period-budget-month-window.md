@@ -53,9 +53,9 @@
 ### Task 3: Review, risk and handoff
 **Files:** this plan, spec, and the three Kotlin files above.
 
-- [ ] Check all changed files from GitHub PR diff: no business logic changes, no unnecessary dependencies, no secrets.
+- [x] Check all changed files from GitHub PR diff: no business logic changes, no unnecessary dependencies, no secrets.
 - [ ] Report independent local checks distinctly from unperformed Gradle and device tests.
-- [ ] Open a **draft** PR targeting `main`; leave it unmerged for review.
+- [x] Open a **draft** PR targeting `main`; leave it unmerged for review.
 - [ ] For broader architecture work, continue staged audit and measurements in Issue #79 before proposing modules.
 
 ## Rollback
@@ -78,13 +78,23 @@ Revert this PR to restore the original calendar blocks. No data migration or per
 
 **Invariant:** The component owns no state and preserves original Box/Row modifiers, text, spacing, icons, accessibility labels, color and fonts. Parent keeps event order: optional `onChangeSelectedAnnualYear`, then `onSetPeriodType(PeriodType.MONTH)`, then `onChangeSelectedMonthIdx`. Finances, Room, Gemini and other UI remain untouched.
 
-- [ ] **RED:** add JUnit assertions for January → December of preceding year, December → January of next year, and adjacent months without year rollover.
-- [ ] Compile the pure helper/JUnit-equivalent harness without production function; expected unresolved reference, not a syntax error.
-- [ ] **GREEN:** implement adjacent-month calculation matching original two conditional branches.
-- [ ] Compile and run the pure Kotlin harness; require all navigation assertions and original calendar tests to pass.
-- [ ] Extract only the selector markup from the large screen into a stateless sibling composable; preserve event order.
-- [ ] Compare unified diff against intended selector-only changes and ensure no other screen behavior is touched.
+- [x] **RED:** add JUnit assertions for January → December of preceding year, December → January of next year, and adjacent months without year rollover.
+- [x] Compile the pure helper/JUnit-equivalent harness without production function; expected unresolved reference, not a syntax error.
+- [x] **GREEN:** implement adjacent-month calculation matching original two conditional branches.
+- [x] Compile and run the pure Kotlin harness; require all navigation assertions and original calendar tests to pass.
+- [x] Extract only the selector markup from the large screen into a stateless sibling composable; preserve event order.
+- [x] Compare unified diff against intended selector-only changes and ensure no other screen behavior is touched.
 - [ ] Run `./gradlew :app:testDebugUnitTest :app:assembleDebug` in configured Android SDK environment (or inspect automatic CI for the precise new head SHA).
 - [ ] Instrumented UI: arrow semantics, January/December year boundary, screen layout appearance, and financial totals unaffected; explicitly report any unrun checks.
 
 **Risk:** A layout / callback event regression could remain undetected by pure Kotlin tests; it needs Compose build and on-device checks. **API cost:** zero additional Gemini calls. **Licensing:** no reference code copied.
+
+### Second-pass verification record
+
+- Real `PeriodBudgetMonthWindowTest.kt` has eight `@Test` cases (four calendar boundaries and four adjacent navigation cases).
+- Local Kotlin compiler with a minimal temporary JUnit API shim and reflective test runner: 8/8 tests passed. This is **not** a Gradle/JUnit/Android test run.
+- Verified the adjacent-month function against original arrow formulas for 2000–2040, all twelve months and both directions: 984/984 combinations matched.
+- Inspected GitHub PR patch: month selector modifiers, typography and icon accessibility descriptions were moved unchanged; parent callback order retained.
+- Android build, Compose rendering and on-device tests are still unverified. Check the automatic GitHub Actions status for this PR's **latest head commit**, not previously successful older commits.
+
+**Manual UI checklist and how to check:** Build/install the PR debug APK on a test profile. Open the budget month screen, compare selector appearance with the released app, press the left arrow at January 2026 (expect December 2025), then right (January 2026), right at December 2026 (January 2027), then left. Test normal July→June/August. Check that income/expense totals and prior-month change are unchanged on the same test data, and no profile selection/Room data is altered.
