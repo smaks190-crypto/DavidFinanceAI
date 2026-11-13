@@ -57,4 +57,12 @@ class DavidLiveFinancialOperationParserTest {
     @Test fun ordinaryExpenseStillUsesExistingParser() {
         assertEquals(DavidLiveFinancialOperationParser.Result.Ordinary, DavidLiveFinancialOperationParser.parse("Потратил 450 рублей на продукты", today))
     }
+    @Test fun unicodeWordEdgesPreserveRussianWordsAndRejectNegation() {
+        assertEquals("нелли", draft("Я должен Нелли 500 рублей").counterparty)
+        assertEquals("рублейкин", draft("Я должен Рублейкин 500 рублей").counterparty)
+        listOf("Я долженник 500 рублей", "Я должен Ивану не 500 рублей", "Я должен Ивану завтра 500 рублей")
+            .forEach { assertTrue(it, DavidLiveFinancialOperationParser.parse(it, today) is DavidLiveFinancialOperationParser.Result.Clarify) }
+        assertEquals(DavidLiveFinancialOperationParser.Result.Ordinary, DavidLiveFinancialOperationParser.parse("", today))
+    }
+
 }
