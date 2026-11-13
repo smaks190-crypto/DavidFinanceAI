@@ -27,3 +27,29 @@ internal fun calculatePeriodMonthWindow(selectedMonthIdx: Int, selectedYear: Int
         previousMonthPrefix = String.format(Locale.US, "%04d-%02d", previousYear, previousMonthIdx + 1)
     )
 }
+
+/** UI-only month position; transaction and balance semantics are unchanged. */
+internal data class PeriodBudgetMonthPosition(
+    val monthIdx: Int,
+    val year: Int
+)
+
+/** Return the adjacent calendar month for a selector arrow (-1 left, +1 right). */
+internal fun calculateAdjacentPeriodMonth(
+    selectedMonthIdx: Int,
+    selectedYear: Int,
+    step: Int
+): PeriodBudgetMonthPosition {
+    require(step == -1 || step == 1) { "step must be -1 or 1" }
+    return if (step == -1) {
+        PeriodBudgetMonthPosition(
+            monthIdx = if (selectedMonthIdx > 0) selectedMonthIdx - 1 else 11,
+            year = if (selectedMonthIdx == 0) selectedYear - 1 else selectedYear
+        )
+    } else {
+        PeriodBudgetMonthPosition(
+            monthIdx = if (selectedMonthIdx < 11) selectedMonthIdx + 1 else 0,
+            year = if (selectedMonthIdx == 11) selectedYear + 1 else selectedYear
+        )
+    }
+}
