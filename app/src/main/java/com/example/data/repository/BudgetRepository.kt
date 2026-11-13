@@ -357,6 +357,24 @@ class BudgetRepository(
         if (syncedLog != null) recurringPaymentDao.insertExecutionLog(syncedLog)
     }
 
+    /** Atomically consume a stable confirmation ID without replacing an existing financial record. */
+    suspend fun insertConfirmedTransaction(transaction: TransactionEntity): Boolean = db.withTransaction {
+        require(transaction.type == "income" || transaction.type == "expense")
+        require(transaction.amount.isFinite() && transaction.amount > 0.0)
+        require(transaction.budgetId.isNotBlank() && transaction.id.isNotBlank())
+        java.time.LocalDate.parse(transaction.date)
+        val existing = transactionDao.getAllTransactions().first().firstOrNull { it.id == transaction.id }
+        if (existing != null) {
+            require(existing.copy(createdAt = transaction.createdAt) == transaction) {
+                "Confirmation ID belongs to a different transaction"
+            }
+            false
+        } else {
+            saveTransactionAndExecutionLog(transaction)
+            true
+        }
+    }
+
     suspend fun insertTransaction(transaction: TransactionEntity) {
         val opId = GlobalConsoleLogger.newOperationId("DB")
         val startMs = System.currentTimeMillis()

@@ -193,6 +193,7 @@ class DavidLiveSessionController(
 
     var onTranscriptTurnsChanged: ((List<DavidLiveTranscriptTurn>) -> Unit)? = null
 
+    private val liveInstanceId = java.util.UUID.randomUUID().toString()
     private val liveSessionEpoch = AtomicInteger(0)
     private val liveTurnSequence = AtomicInteger(0)
     private var activePendingUserTurnId: String? = null
@@ -873,6 +874,8 @@ class DavidLiveSessionController(
             val last = _transcriptTurns.lastOrNull()
             if (last != null &&
                 last.speaker == speaker &&
+                DavidLiveOperationCommand.parse(clean) == null &&
+                DavidLiveOperationCommand.parse(last.text) == null &&
                 !last.wasInterrupted &&
                 System.currentTimeMillis() - last.timestampMs < 3500L
             ) {
@@ -883,7 +886,7 @@ class DavidLiveSessionController(
             } else {
                 _transcriptTurns.add(
                     DavidLiveTranscriptTurn(
-                        id = explicitId ?: pendingId ?: "live_turn_${liveSessionEpoch.get()}_${liveTurnSequence.incrementAndGet()}_${speaker.name.lowercase()}",
+                        id = explicitId ?: pendingId ?: "live_turn_${liveInstanceId}_${liveSessionEpoch.get()}_${liveTurnSequence.incrementAndGet()}_${speaker.name.lowercase()}",
                         speaker = speaker,
                         text = clean,
                         timestampMs = explicitTimestampMs ?: pendingTs.takeIf { it > 0L } ?: maxOf(System.currentTimeMillis(), (_transcriptTurns.lastOrNull()?.timestampMs ?: 0L) + 1L),
@@ -1302,7 +1305,7 @@ class DavidLiveSessionController(
                - Последние совершенные операции -> `get_recent_transactions`
                - На комбинированные вопросы (например: «Сколько останется после аренды до зарплаты?», «Сколько безопасно потратить с учётом аренды и зарплаты?») вызывай ВСЕ релевантные инструменты (`get_recurring_schedule` + `get_safe_to_spend_forecast`, а для сценариев задержки/траты — ещё и `simulate_what_if`).
             3. НИКОГДА не выдумывай суммы, даты, категории, проценты или операции, которых нет в ответах инструментов. Если `dataAvailable == false` || `isDatabaseEmpty == true` — честно скажи, что данные отсутствуют или пусты, и не выдавай `0 ₽` за подтверждённый факт.
-            4. Ты работаешь строго в режиме чтения: никогда не утверждай, что ты сам создал, изменил или удалил финансовую операцию без подтверждения пользователя.
+            4. Инструменты только читают финансовые данные. Приложение может предложить карточку расхода или дохода из реплики пользователя: запись выполняется только после кнопки «Записать» или точной команды «подтверждаю запись» для открытой карточки. Не утверждай, что операция сохранена, по одному согласию пользователя или результату чтения: подтверждением служит успешное сохранение в приложении. Долги, погашения и переводы пока оформляются в соответствующих разделах приложения.
             5. СТРОГОЕ РАЗДЕЛЕНИЕ ФИНАНСОВЫХ СУЩНОСТЕЙ И СТАТУСОВ ДОСТОВЕРНОСТИ:
                - Доступный остаток (`availableBalanceRub` / `totalBalanceRub`) — фактические деньги на руках сейчас. НИКОГДА не складывай текущий баланс с будущей зарплатой или с уже полученным доходом за 30 дней!
                - Заработанный доход за 30 дней (`earnedIncome30dRub` / `salaryIncome30dRub`) — уже полученные в прошлом деньги, они уже учтены в балансе.
@@ -2250,7 +2253,7 @@ class DavidLiveSessionController(
                 } else {
                     val prevTs = lastFinal?.timestampMs ?: 0L
                     val userId = activePendingUserTurnId ?: run {
-                        "live_turn_${liveSessionEpoch.get()}_${liveTurnSequence.incrementAndGet()}_user".also {
+                        "live_turn_${liveInstanceId}_${liveSessionEpoch.get()}_${liveTurnSequence.incrementAndGet()}_user".also {
                             activePendingUserTurnId = it
                         }
                     }
@@ -2297,7 +2300,7 @@ class DavidLiveSessionController(
                     } else {
                         val prevTs = lastItem?.timestampMs ?: 0L
                         val davidId = activePendingDavidTurnId ?: run {
-                            "live_turn_${liveSessionEpoch.get()}_${liveTurnSequence.incrementAndGet()}_david".also {
+                            "live_turn_${liveInstanceId}_${liveSessionEpoch.get()}_${liveTurnSequence.incrementAndGet()}_david".also {
                                 activePendingDavidTurnId = it
                             }
                         }

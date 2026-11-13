@@ -415,6 +415,21 @@ fun DavidChatScreen(
         }
     }
 
+    val savingOperationId by viewModel.savingOperationId.collectAsState()
+    val pendingOperation by viewModel.pendingLiveOperation.collectAsState()
+    val operationError by viewModel.liveOperationError.collectAsState()
+    pendingOperation?.let { message ->
+        val operation = (message.type as ChatMessageType.ParsedTransactionProposal).operation
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissChatProposedOperation(message.id) },
+            title = { Text(if (operation.type == "expense") "Записать расход?" else "Записать доход?") },
+            text = { Text("${operation.amount} ₽ · ${operation.category}\n${operation.subcategory}\nДата: ${operation.date}\n\nНажмите «Записать» или скажите «подтверждаю запись»." +
+                (operationError?.let { "\n\n$it" } ?: "")) },
+            confirmButton = { TextButton(enabled = savingOperationId != message.id, onClick = { viewModel.confirmChatProposedOperation(message.id, effectiveSoundManager) }) { Text(if (savingOperationId == message.id) "Сохранение…" else "Записать") } },
+            dismissButton = { TextButton(enabled = savingOperationId != message.id, onClick = { viewModel.dismissChatProposedOperation(message.id) }) { Text("Отмена") } }
+        )
+    }
+
     if (showAchievementsDialog) {
         AchievementsDialog(onDismiss = { showAchievementsDialog = false })
     }

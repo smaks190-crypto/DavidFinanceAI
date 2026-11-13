@@ -1,5 +1,9 @@
 package com.example.davidapp
 
+import com.example.davidapp.live.DavidLiveOperationCommand
+
+import kotlinx.coroutines.sync.withLock
+
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
@@ -164,6 +168,16 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
     private val messagesLock = Any()
     private val sessionMessages = mutableListOf<ChatMessage>()
     private val activeLiveSessionChatMsgIds = mutableSetOf<String>()
+    private var profileGeneration = 0L
+    private var changingProfile = false
+    private val _savingOperationId = MutableStateFlow<String?>(null)
+    val savingOperationId = _savingOperationId.asStateFlow()
+    private val processedLiveOperationTurns = mutableMapOf<String, String>()
+    private val _pendingLiveOperation = MutableStateFlow<ChatMessage?>(null)
+    val pendingLiveOperation = _pendingLiveOperation.asStateFlow()
+    private val _liveOperationError = MutableStateFlow<String?>(null)
+    val liveOperationError = _liveOperationError.asStateFlow()
+
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val isoFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -174,7 +188,10 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         liveSessionController.onTranscriptTurnsChanged = { turns ->
-            syncLiveTranscriptTurnsToChat(turns)
+            if (!changingProfile) {
+                syncLiveTranscriptTurnsToChat(turns)
+                proposeLiveOperations(turns)
+            }
         }
         val migratedKey = resolveAndMigrateApiKey(
             legacyPrefs = prefs,
@@ -192,7 +209,13 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
         currentBudgetId = normalizedBudgetId
         currentProfileName = if (profileName.isNotBlank()) profileName else "Пользователь"
         if (isDifferentBudget) {
-            liveSessionController.onBudgetProfileChanged(currentBudgetId)
+            profileGeneration++
+            changingProfile = true
+            try {
+                liveSessionController.onBudgetProfileChanged(currentBudgetId)
+            } finally {
+                changingProfile = false
+            }
         } else {
             liveFinancialToolsProvider.setBudgetId(currentBudgetId)
         }
@@ -205,6 +228,9 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
         _hasApiKey.value = effectiveKey.isNotBlank()
 
         if (isDifferentBudget || notificationsJob == null) {
+            _pendingLiveOperation.value = null
+            _liveOperationError.value = null
+            processedLiveOperationTurns.clear()
             sessionMessages.clear()
             activeLiveSessionChatMsgIds.clear()
             _stage.value = DavidStage.INITIAL
@@ -669,50 +695,137 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
             currentBudgetId = currentBudgetId
         )
 
-    fun confirmChatProposedOperation(messageId: String, soundManager: SoundManager? = null) {
+    private fun proposeLiveOperations(turns: List<DavidLiveTranscriptTurn>) {
+        val budgetId = currentBudgetId
+        val generation = profileGeneration
         viewModelScope.launch {
-            val index = sessionMessages.indexOfFirst { it.id == messageId }
-            if (index == -1) return@launch
-            val msg = sessionMessages[index]
-            val proposal = msg.type as? ChatMessageType.ParsedTransactionProposal ?: return@launch
-            if (proposal.isAdded) return@launch
-
-            val op = proposal.operation
-            if (soundManager != null) {
-                soundManager.playTransactionCoins()
-            } else {
-                SoundManager.playTransactionCoins(getApplication())
+            for (turn in turns) {
+                if (currentBudgetId != budgetId || profileGeneration != generation) return@launch
+                if (!turn.isFinal || turn.wasInterrupted || turn.speaker != DavidLiveSpeaker.USER) continue
+                if (_savingOperationId.value == "live-proposal:${turn.id}") continue
+                if (processedLiveOperationTurns[turn.id] == turn.text) continue
+                processedLiveOperationTurns[turn.id] = turn.text
+                val priorProposal = sessionMessages.firstOrNull { it.id == "live-proposal:${turn.id}" }
+                if ((priorProposal?.type as? ChatMessageType.ParsedTransactionProposal)?.isAdded == true) continue
+                // A correction invalidates the reviewed amount even if the new text cannot be parsed.
+                priorProposal?.let { dismissChatProposedOperation(it.id) }
+                val command = DavidLiveOperationCommand.parse(turn.text)
+                if (command != null) {
+                    _pendingLiveOperation.value?.let { pending ->
+                        if (command == DavidLiveOperationCommand.CONFIRM) confirmChatProposedOperation(pending.id)
+                        else dismissChatProposedOperation(pending.id)
+                    }
+                    continue
+                }
+                // Never infer a transfer or a debt as ordinary income/expense.
+                if (Regex("перев[ео]|долг|долж|погас|погаш|со сч[её]та|на сч[её]т", RegexOption.IGNORE_CASE).containsMatchIn(turn.text)) continue
+                val operation = tryParseOperationFromChat(turn.text) ?: continue
+                if (processedLiveOperationTurns[turn.id] != turn.text) continue
+                if (currentBudgetId != budgetId || profileGeneration != generation) return@launch
+                if (_savingOperationId.value == "live-proposal:${turn.id}") continue
+                val message = ChatMessage(
+                    id = "live-proposal:${turn.id}", sender = "Давид Жабов 🐸",
+                    type = ChatMessageType.ParsedTransactionProposal(operation, false),
+                    timestamp = currentTime(), isUser = false
+                )
+                val existing = sessionMessages.indexOfFirst { it.id == message.id }
+                if (existing >= 0) {
+                    if ((sessionMessages[existing].type as? ChatMessageType.ParsedTransactionProposal)?.isAdded == true) continue
+                    sessionMessages[existing] = message
+                    rebuildChronologicalMessages()
+                } else addSessionMessage(message)
+                if (_pendingLiveOperation.value == null || _pendingLiveOperation.value?.id == message.id) {
+                    _liveOperationError.value = null
+                    _pendingLiveOperation.value = message
+                }
             }
-            repository.insertTransaction(
-                TransactionEntity(
-                    budgetId = currentBudgetId,
+        }
+    }
+
+    private fun advanceLiveOperation(messageId: String) {
+        if (_pendingLiveOperation.value?.id != messageId) return
+        _liveOperationError.value = null
+        _pendingLiveOperation.value = sessionMessages.firstOrNull {
+            it.id.startsWith("live-proposal:") &&
+                (it.type as? ChatMessageType.ParsedTransactionProposal)?.isAdded == false && it.id != messageId
+        }
+    }
+
+    private val confirmationMutex = kotlinx.coroutines.sync.Mutex()
+
+    fun confirmChatProposedOperation(messageId: String, soundManager: SoundManager? = null) {
+        val expectedMessage = sessionMessages.firstOrNull { it.id == messageId } ?: return
+        val confirmationBudgetId = currentBudgetId
+        val generation = profileGeneration
+        viewModelScope.launch {
+            confirmationMutex.withLock {
+                if (confirmationBudgetId != currentBudgetId || profileGeneration != generation) return@withLock
+                val msg = sessionMessages.firstOrNull { it.id == messageId } ?: return@withLock
+                if (msg != expectedMessage) return@withLock
+                val proposal = msg.type as? ChatMessageType.ParsedTransactionProposal ?: return@withLock
+                if (proposal.isAdded) return@withLock
+                val op = proposal.operation
+                if (op.type !in setOf("income", "expense") || !op.amount.isFinite() || op.amount <= 0) return@withLock
+                val transaction = TransactionEntity(
+                    id = java.util.UUID.nameUUIDFromBytes(
+                        "chat-confirmation:$confirmationBudgetId:$messageId".toByteArray(Charsets.UTF_8)
+                    ).toString(),
+                    budgetId = confirmationBudgetId,
                     type = op.type,
                     date = op.date.ifBlank { isoFormat.format(Date()) },
                     category = op.category.ifBlank { "Прочее" },
                     subcategory = op.subcategory.ifBlank { op.title.ifBlank { op.category } },
                     amount = op.amount
                 )
-            )
-            val appCtx = getApplication<Application>()
-            if (op.type == "expense" && com.example.notifications.ReminderManager.isCroakAlertEnabled(appCtx)) {
-                val baseThreshold = com.example.notifications.ReminderManager.getCroakThresholdAmount(appCtx)
-                if (op.amount >= baseThreshold) {
-                    com.example.notifications.ReminderManager.triggerCroakAlertNotification(
-                        context = appCtx,
-                        category = op.subcategory.ifBlank { op.title.ifBlank { op.category } },
-                        amount = op.amount.toInt(),
-                        overrideThreshold = baseThreshold
-                    )
+                _savingOperationId.value = messageId
+                try {
+                    val inserted = repository.insertConfirmedTransaction(transaction)
+                    if (currentBudgetId != confirmationBudgetId || profileGeneration != generation) return@withLock
+                    val currentIndex = sessionMessages.indexOfFirst { it.id == messageId }
+                    if (currentIndex >= 0) {
+                        sessionMessages[currentIndex] = msg.copy(type = proposal.copy(isAdded = true))
+                        rebuildChronologicalMessages()
+                    }
+                    advanceLiveOperation(messageId)
+                    if (inserted) runCatching {
+                        if (soundManager != null) soundManager.playTransactionCoins()
+                        else SoundManager.playTransactionCoins(getApplication())
+                        val appCtx = getApplication<Application>()
+                        if (op.type == "expense" && com.example.notifications.ReminderManager.isCroakAlertEnabled(appCtx)) {
+                            val baseThreshold = com.example.notifications.ReminderManager.getCroakThresholdAmount(appCtx)
+                            if (op.amount >= baseThreshold) {
+                                com.example.notifications.ReminderManager.triggerCroakAlertNotification(
+                                    context = appCtx,
+                                    category = op.subcategory.ifBlank { op.title.ifBlank { op.category } },
+                                    amount = op.amount.toInt(),
+                                    overrideThreshold = baseThreshold
+                                )
+                            }
+                        }
+
+                    }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    if (currentBudgetId == confirmationBudgetId && profileGeneration == generation) {
+                        _liveOperationError.value = "Сохранение не подтверждено. Можно безопасно повторить попытку."
+                        addSessionMessage(ChatMessage(
+                            sender = "Давид Жабов 🐸",
+                            type = ChatMessageType.Text("Не удалось подтвердить сохранение. Повторите попытку — повторная запись защищена от дублей."),
+                            timestamp = currentTime(), isUser = false
+                        ))
+                    }
+                } finally {
+                    _savingOperationId.value = null
                 }
             }
-            sessionMessages[index] = msg.copy(
-                type = proposal.copy(isAdded = true)
-            )
-            rebuildChronologicalMessages()
         }
     }
 
+
     fun dismissChatProposedOperation(messageId: String) {
+        if (_savingOperationId.value == messageId) return
+        advanceLiveOperation(messageId)
         val removed = sessionMessages.removeAll { it.id == messageId }
         if (removed) {
             rebuildChronologicalMessages()
