@@ -193,4 +193,20 @@ class DavidLiveFinancialConfirmationTest {
         } finally { store.clear(); Dispatchers.resetMain() }
     }
 
+    @Test fun rejectedOperationCanBeDictatedAgainImmediately() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val vm = DavidViewModel(app)
+        val store = ViewModelStore().apply { put("test", vm) }
+        try {
+            vm.liveSessionController.recordTranscriptTurn(DavidLiveSpeaker.USER, "Потратил 450 рублей на продукты")
+            val first = withTimeout(5_000) { vm.pendingLiveOperation.filterNotNull().first() }
+            vm.dismissChatProposedOperation(first.id)
+            vm.liveSessionController.recordTranscriptTurn(DavidLiveSpeaker.USER, "Потратил 600 рублей на продукты")
+            val revised = withTimeout(5_000) { vm.pendingLiveOperation.filterNotNull().first() }
+            assertNotEquals(first.id, revised.id)
+            assertEquals(600.0, (revised.type as ChatMessageType.ParsedTransactionProposal).operation.amount, 0.0)
+        } finally { store.clear(); Dispatchers.resetMain() }
+    }
+
 }

@@ -881,6 +881,7 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissChatProposedOperation(messageId: String) {
         if (_savingOperationId.value == messageId) return
+        liveSessionController.separateNextUserTranscript()
         advanceLiveOperation(messageId)
         val removed = sessionMessages.removeAll { it.id == messageId }
         if (removed) {

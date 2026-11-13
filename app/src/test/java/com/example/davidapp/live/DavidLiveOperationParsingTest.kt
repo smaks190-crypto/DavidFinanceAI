@@ -10,8 +10,10 @@ import java.util.Locale
 class DavidLiveOperationParsingTest {
     @Test fun onlyExplicitCommandsAuthorizeWriting() {
         assertEquals(DavidLiveOperationCommand.CONFIRM, DavidLiveOperationCommand.parse("Подтверждаю запись."))
+        assertEquals(DavidLiveOperationCommand.CONFIRM, DavidLiveOperationCommand.parse("Да"))
+        assertEquals(DavidLiveOperationCommand.CANCEL, DavidLiveOperationCommand.parse("Нет"))
         assertEquals(DavidLiveOperationCommand.CANCEL, DavidLiveOperationCommand.parse("Отмени запись!"))
-        listOf("да", "хорошо", "не подтверждаю запись", "он сказал подтверждаю запись", "записать?")
+        listOf("хорошо", "не подтверждаю запись", "он сказал подтверждаю запись", "записать?")
             .forEach { assertNull(DavidLiveOperationCommand.parse(it)) }
     }
 

@@ -8,8 +8,8 @@ internal enum class DavidLiveOperationCommand {
         fun parse(text: String): DavidLiveOperationCommand? = when (
             text.lowercase(java.util.Locale.ROOT).trim().trimEnd('.', '!', '?')
         ) {
-            "подтверждаю запись" -> CONFIRM
-            "отмени запись" -> CANCEL
+            "подтверждаю запись", "да" -> CONFIRM
+            "отмени запись", "нет" -> CANCEL
             else -> null
         }
     }

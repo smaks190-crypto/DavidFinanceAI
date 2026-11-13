@@ -118,6 +118,12 @@ fun DavidChatScreen(
     val liveActiveToolName by viewModel.liveActiveToolName.collectAsState()
     val liveDebugOverrideVisualState by viewModel.liveDebugOverrideVisualState.collectAsState()
 
+    val savingOperationId by viewModel.savingOperationId.collectAsState()
+    val pendingOperation by viewModel.pendingLiveOperation.collectAsState()
+    val operationError by viewModel.liveOperationError.collectAsState()
+    val operationAccounts by viewModel.liveOperationAccounts.collectAsState()
+    val operationClarification by viewModel.liveOperationClarification.collectAsState()
+
     // Persisted draft text in DavidViewModel so minimizing/closing chat never loses typed text
     val inputText by viewModel.chatDraftText.collectAsState()
     var showAchievementsDialog by remember { mutableStateOf(false) }
@@ -385,6 +391,23 @@ fun DavidChatScreen(
                 connectionState = liveConnectionState,
                 liveSubtitle = liveSubtitle,
                 subtitleSpeaker = liveSubtitleSpeaker,
+                confirmationContent = if (pendingOperation != null || operationClarification != null) ({
+                    val message = pendingOperation
+                    if (message != null) {
+                        com.example.davidapp.live.DavidLiveOperationCard(
+                            operation = (message.type as ChatMessageType.ParsedTransactionProposal).operation,
+                            accounts = operationAccounts, saving = savingOperationId == message.id,
+                            error = operationError,
+                            onConfirm = { viewModel.confirmChatProposedOperation(message.id, effectiveSoundManager) },
+                            onReject = { viewModel.dismissChatProposedOperation(message.id) }
+                        )
+                    } else {
+                        Column(Modifier.padding(24.dp)) {
+                            Text(operationClarification.orEmpty())
+                            TextButton(onClick = viewModel::dismissLiveOperationClarification) { Text("Понятно") }
+                        }
+                    }
+                }) else null,
                 rayMagnitudes = liveRayMagnitudes,
                 overallEnergy = liveOverallEnergy,
                 activeSpeaker = liveActiveSpeaker,
@@ -413,26 +436,6 @@ fun DavidChatScreen(
                                     visualPhase = liveVisualPhase
             )
         }
-    }
-
-    val savingOperationId by viewModel.savingOperationId.collectAsState()
-    val pendingOperation by viewModel.pendingLiveOperation.collectAsState()
-    val operationError by viewModel.liveOperationError.collectAsState()
-    val operationAccounts by viewModel.liveOperationAccounts.collectAsState()
-    val operationClarification by viewModel.liveOperationClarification.collectAsState()
-    pendingOperation?.let { message ->
-        com.example.davidapp.live.DavidLiveFinancialConfirmationDialog(
-            operation = (message.type as ChatMessageType.ParsedTransactionProposal).operation,
-            accounts = operationAccounts, saving = savingOperationId == message.id, error = operationError,
-            onChange = viewModel::updatePendingLiveOperation,
-            onConfirm = { viewModel.confirmChatProposedOperation(message.id, effectiveSoundManager) },
-            onDismiss = { viewModel.dismissChatProposedOperation(message.id) }
-        )
-    }
-    if (pendingOperation == null && operationClarification != null) {
-        AlertDialog(onDismissRequest = viewModel::dismissLiveOperationClarification,
-            title = { Text("Уточните операцию") }, text = { Text(operationClarification.orEmpty()) },
-            confirmButton = { TextButton(onClick = viewModel::dismissLiveOperationClarification) { Text("Понятно") } })
     }
 
     if (showAchievementsDialog) {

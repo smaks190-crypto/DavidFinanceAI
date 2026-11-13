@@ -771,9 +771,12 @@ fun DavidLiveSheet(
     debugOverrideVisualState: DavidLiveVisualState? = null,
     onSelectDebugVisualState: ((DavidLiveVisualState?) -> Unit)? = null,
     enableDebugStateSwitcher: Boolean = false,
-    subtitleSpeaker: DavidLiveSpeaker = activeSpeaker
+    subtitleSpeaker: DavidLiveSpeaker = activeSpeaker,
+    confirmationContent: (@Composable () -> Unit)? = null
 ) {
     val context = LocalContext.current
+    var retainedConfirmation by remember { mutableStateOf(confirmationContent) }
+    SideEffect { if (confirmationContent != null) retainedConfirmation = confirmationContent }
 
     // Local fallback override when tested standalone in Compose UI tests without a controller callback
     var localDebugOverride by remember { mutableStateOf<DavidLiveVisualState?>(null) }
@@ -1240,6 +1243,18 @@ fun DavidLiveSheet(
 
                     Spacer(modifier = Modifier.weight(1f))
 
+                    AnimatedContent(
+                        targetState = confirmationContent != null,
+                        transitionSpec = {
+                            (fadeIn(tween(400)) + scaleIn(tween(450), initialScale = 0.82f)) togetherWith
+                                (fadeOut(tween(280)) + androidx.compose.animation.scaleOut(tween(400), targetScale = 0.82f))
+                        },
+                        modifier = Modifier.fillMaxWidth().height(if (isEmbeddedInModalCard) 280.dp else 310.dp),
+                        contentAlignment = Alignment.Center, label = "sphereOperationMorph"
+                    ) { showingConfirmation ->
+                        if (showingConfirmation) {
+                            retainedConfirmation?.invoke()
+                        } else {
                     // 2. Center Morphing 3D Mesh Sphere Visualizer Area
                     Box(
                         modifier = Modifier
@@ -1324,6 +1339,9 @@ fun DavidLiveSheet(
                                     fontWeight = FontWeight.Medium
                                 )
                             }
+                        }
+                    }
+
                         }
                     }
 
@@ -1700,27 +1718,14 @@ internal fun DavidLiveSpeechOverlay(
 
 @Composable
 private fun StreamingLiveSpeechText(text: String, speaker: DavidLiveSpeaker) {
-    var previousText by remember(speaker) { mutableStateOf("") }
-    var splitIndex by remember(speaker) { mutableIntStateOf(0) }
-    val tailAlpha = remember(speaker) { Animatable(0f) }
-    LaunchedEffect(text, speaker) {
-        splitIndex = computeStreamingTextFadeSplitIndex(previousText, text)
-        previousText = text
-        tailAlpha.snapTo(0f)
-        tailAlpha.animateTo(1f, tween(220))
+    androidx.compose.animation.Crossfade(targetState = text, animationSpec = tween(320), label = "streamingSubtitle") { displayedText ->
+        Text(
+            text = displayedText,
+            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+            color = com.example.ui.theme.Slate100,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(16.dp)
+        )
     }
-    val split = splitIndex.coerceIn(0, text.length)
-    Text(
-        text = buildAnnotatedString {
-            append(text.substring(0, split))
-            pushStyle(SpanStyle(color = com.example.ui.theme.Slate100.copy(alpha = tailAlpha.value)))
-            append(text.substring(split))
-            pop()
-        },
-        style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-        color = com.example.ui.theme.Slate100,
-        maxLines = 4,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.padding(16.dp)
-    )
 }
