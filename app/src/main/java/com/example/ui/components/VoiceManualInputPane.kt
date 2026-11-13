@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -55,6 +56,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -64,6 +66,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.db.CategoryEntity
@@ -97,10 +100,12 @@ fun VoiceManualInputPane(
     initialType: String,
     contentAlpha: Float,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    calendarHeight: Dp = 490.dp
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -124,6 +129,7 @@ fun VoiceManualInputPane(
     var isAmountFocused by remember { mutableStateOf(false) }
     var isDescriptionFocused by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    BackHandler(enabled = showDatePicker) { showDatePicker = false }
 
     // Синхронизируем выбранную категорию при смене списка категорий или типа
     val filteredCategories = remember(categories, type) {
@@ -199,6 +205,16 @@ fun VoiceManualInputPane(
                 )
         )
 
+        ManualInlineDatePickerTransition(
+            isDatePickerVisible = showDatePicker,
+            date = date,
+            calendarHeight = calendarHeight,
+            onDismissDatePicker = { showDatePicker = false },
+            onConfirmDatePicker = { selected ->
+                date = selected
+                showDatePicker = false
+            }
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -349,6 +365,7 @@ fun VoiceManualInputPane(
                     accentColor = accentColor,
                     onClick = {
                         focusManager.clearFocus()
+                        keyboardController?.hide()
                         showDatePicker = true
                     },
                     modifier = Modifier.weight(1f)
@@ -734,16 +751,7 @@ fun VoiceManualInputPane(
                 }
             }
         }
-    }
-
-    if (showDatePicker) {
-        SingleDatePickerDialog(
-            initialDate = date,
-            onDismiss = { showDatePicker = false },
-            onConfirm = { selected ->
-                date = selected
-            }
-        )
+        }
     }
 }
 

@@ -490,6 +490,8 @@ fun MorphingBottomBar(
         contentAlignment = Alignment.BottomCenter
     ) {
         val fullModalHeight = ((maxHeight - 24.dp) * 0.88f).coerceAtLeast(320.dp)
+        // Measure before verticalScroll, which gives its children unbounded height.
+        val manualCalendarHeight = manualInlineCalendarHeight(minOf(maxHeight, fullModalHeight))
         val navBarHeightPx = with(density) { 68.dp.roundToPx() }
 
         if (scrimAlpha > 0.005f) {
@@ -856,6 +858,7 @@ fun MorphingBottomBar(
                                         selectedDate = selectedDate,
                                         initialType = modal.initialType,
                                         contentAlpha = 1f,
+                                        calendarHeight = manualCalendarHeight,
                                         onDismiss = {
                                             onDismissManualInput()
                                             viewModel.closeModal()
