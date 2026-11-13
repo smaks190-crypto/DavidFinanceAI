@@ -40,3 +40,21 @@
 - [ ] On device: compare same-window animation, cancel/confirm, system back, small screen, off-line, normal AddTransactionDialog.
 
 **Status:** Android/Compose tests for the new feature pending. Keep PR draft, do not merge.
+
+## Stage 4: Day selection contract & accessibility (same PR)
+
+**Files:** `app/src/main/java/com/example/ui/components/SingleDatePickerDialog.kt`; `app/src/androidTest/java/com/example/ui/components/SingleDatePickerContentUiTest.kt`.
+
+**Current issue:** Previous two UI tests verified confirm/back for an untouched initial date, but did not exercise tapping a different day before either action. Date cells also lacked stable accessibility semantics or test tags; 1..31 text can be ambiguous across months.
+
+**Minimal implementation:** Add a stable ISO-based semantics test tag (`calendar_day_YYYY-MM-DD`), a spoken date content description and `selected` state to existing day cells. No change to how dates are calculated, saved or displayed, and no new UI component. Add tests: select another date -> selected semantic state -> confirm only this date; select another date -> back -> no confirmation.
+
+**Invariants:** Existing full-screen SingleDatePickerDialog behavior, layout, theme and scroll remain unchanged; Compose tests verify both embedded and legacy mode. Room write only through existing manual save button. No API/Gemini cost, no network changes, no reference licensing changes.
+
+**Verification:** 
+- [ ] New `SingleDatePickerContentUiTest` cases fail before the implementation because `onNodeWithTag(calendar_day_...)` cannot find a node; local Android SDK not available, so this RED is a code precondition, not an executed Android test.
+- [ ] Run `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest` in GitHub Actions.
+- [ ] Existing `release-ui-checks.yml` runs all four date-picker tests on emulator, not only compile.
+- [ ] Inspect XML test count 4, failures 0.
+- [ ] On-device verify TalkBack announces date and selection, and that manual input survives cancel/confirm and offline operation.
+- [ ] Keep this PR draft, do not merge.

@@ -37,6 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -265,6 +269,11 @@ internal fun SingleDatePickerContent(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .height(40.dp)
+                                                    .testTag("calendar_day_$dateStr")
+                                                    .semantics {
+                                                        contentDescription = "$dayNum ${MonthNamesGenitive[monthInfo.monthIdx]} ${monthInfo.year}"
+                                                        selected = isSelected
+                                                    }
                                                     .then(
                                                         if (isSelected) {
                                                             Modifier
