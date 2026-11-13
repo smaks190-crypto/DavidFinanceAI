@@ -82,7 +82,92 @@ class BudgetRepository(
     }
 
     suspend fun deleteAccountById(id: String) {
-        accountDao.deleteAccountById(id)
+        db.withTransaction {
+            val account = accountDao.getAccountById(id)
+            if (account != null) {
+                transactionDao.getTransactionsByBudgetId(account.budgetId).first()
+                    .filter { it.cashAccountId == id }
+                    .forEach { transactionDao.insertTransaction(it.copy(cashAccountId = null)) }
+            }
+            accountDao.deleteAccountById(id)
+        }
+    }
+
+    /** The ledger and every financial mutation commit together, including transfers and debt creation. */
+    suspend fun confirmFinancialOperation(id: String, budgetId: String, operation: ParsedVoiceOperation): Boolean = db.withTransaction {
+        val op = operation
+        val kind = op.financialKind
+        require(id.isNotBlank() && budgetId.isNotBlank()) { "Не указан бюджет или идентификатор подтверждения" }
+        require(op.amount.isFinite() && op.amount > 0) { "Укажите положительную сумму" }
+        java.time.LocalDate.parse(op.date)
+        val fields = listOf(budgetId, kind.name, op.type, op.amount.toString(), op.date, op.category,
+            op.subcategory, op.cashAccountId.orEmpty(), op.destinationAccountId.orEmpty(), op.debtId.orEmpty(), op.counterparty.trim(), op.requiresCashAccount.toString())
+        val canonical = fields.joinToString("") { "${it.length}:$it" }
+        val fingerprint = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(canonical.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        val ledger = db.confirmedFinancialOperationDao()
+        ledger.getById(id)?.let {
+            require(it.budgetId == budgetId && it.fingerprint == fingerprint) { "Это подтверждение уже использовано для другой операции" }
+            return@withTransaction false
+        }
+        suspend fun cashAccount(accountId: String?): AccountEntity? {
+            if (accountId == null) return null
+            val account = requireNotNull(accountDao.getAccountById(accountId)) { "Счёт удалён. Выберите другой счёт" }
+            require(account.budgetId == budgetId && !FinancialSemanticsCalculator.isDebtAccount(account)) { "Выберите денежный счёт текущего бюджета" }
+            return account
+        }
+        suspend fun changeBalance(account: AccountEntity?, delta: Double) {
+            if (account == null) return
+            require(account.balance.isFinite() && (account.balance + delta).isFinite()) { "Некорректный баланс счёта" }
+            check(accountDao.updateBalance(account.id, delta) == 1) { "Не удалось обновить счёт" }
+        }
+        val cash = cashAccount(op.cashAccountId)
+        require(!op.requiresCashAccount || cash != null) { "Вы назвали денежный счёт. Выберите его в карточке" }
+        require(kind == FinancialOperationKind.TRANSFER || op.destinationAccountId == null) { "Счёт назначения допустим только для перевода" }
+        require(kind.repaysDebt || op.debtId == null) { "Выбор существующего долга допустим только для погашения" }
+        if (kind == FinancialOperationKind.TRANSFER) {
+            val source = requireNotNull(cash) { "Выберите счёт списания" }
+            val destination = requireNotNull(cashAccount(op.destinationAccountId)) { "Выберите счёт зачисления" }
+            require(source.id != destination.id) { "Для перевода нужны разные счета" }
+            changeBalance(source, -op.amount)
+            changeBalance(destination, op.amount)
+            notificationDao.insertNotification(NotificationEntity(
+                id = "$id:notification", budgetId = budgetId, title = "Перевод между счетами",
+                description = "${op.amount} ₽: ${source.name} → ${destination.name} (${op.date})", icon = "repeat"
+            ))
+        } else {
+            var debtId: String? = null
+            if (kind.createsDebt) {
+                require(op.counterparty.trim().isNotEmpty()) { "Укажите имя или название долга" }
+                require(!kind.isDeclaration || cash == null) { "Фиксация долга не меняет денежный счёт" }
+                debtId = "$id:debt"
+                check(accountDao.getAccountById(debtId) == null) { "Идентификатор долга уже занят" }
+                accountDao.insertAccount(AccountEntity(id = debtId, budgetId = budgetId,
+                    name = op.counterparty.trim(), balance = if (kind.isDeclaration) op.amount else 0.0,
+                    type = if (kind.isWeOwe) "we_owe" else "owes_us"))
+            } else if (kind.repaysDebt) {
+                val debt = requireNotNull(op.debtId?.let { accountDao.getAccountById(it) }) { "Выберите погашаемый долг" }
+                require(debt.budgetId == budgetId && if (kind.isWeOwe) FinancialSemanticsCalculator.isWeOweDebt(debt)
+                    else FinancialSemanticsCalculator.isOwesUsDebt(debt)) { "Направление долга не совпадает с операцией" }
+                val remaining = FinancialSemanticsCalculator.calculateRemainingDebt(debt, transactionDao.getTransactionsByBudgetId(budgetId).first()).remainingAmount
+                require(op.amount <= remaining) { "Сумма превышает остаток долга ($remaining ₽)" }
+                debtId = debt.id
+            }
+            if (!kind.isDeclaration) {
+                val type = when (kind) {
+                    FinancialOperationKind.BORROW, FinancialOperationKind.REPAY_OWES_US -> "income"
+                    FinancialOperationKind.LEND, FinancialOperationKind.REPAY_WE_OWE -> "expense"
+                    else -> op.type
+                }
+                require(type in setOf("income", "expense")) { "Неизвестный тип операции" }
+                val tx = TransactionEntity(id = id, budgetId = budgetId, accountId = debtId, cashAccountId = cash?.id,
+                    type = type, date = op.date, category = if (kind == FinancialOperationKind.TRANSACTION) op.category.ifBlank { "Прочее" } else "Долги",
+                    subcategory = op.subcategory.ifBlank { op.title }, amount = op.amount)
+                insertConfirmedTransaction(tx)
+            }
+        }
+        ledger.insert(com.example.data.db.ConfirmedFinancialOperationEntity(id, budgetId, fingerprint, op.date))
+        true
     }
 
     suspend fun transferBetweenAccounts(
@@ -292,6 +377,7 @@ class BudgetRepository(
             aiAuditDao.deleteAuditsByBudgetId(id)
             categoryDao.deleteCategoriesByBudgetId(id)
             accountDao.deleteAccountsByBudgetId(id)
+            db.confirmedFinancialOperationDao().deleteForBudget(id)
             notificationDao.deleteNotificationsByBudgetId(id)
             recurringPaymentDao.deleteExecutionLogsByBudgetId(id)
             recurringPaymentDao.deleteRecurringPaymentsByBudgetId(id)
@@ -304,6 +390,7 @@ class BudgetRepository(
     }
 
     private suspend fun clearDatabaseData() {
+        db.confirmedFinancialOperationDao().deleteAll()
         transactionDao.deleteAllTransactions()
         goalDao.deleteAllGoals()
         categoryDao.deleteAllCategories()
@@ -349,12 +436,46 @@ class BudgetRepository(
         true
     }
 
+    private suspend fun synchronizeCashBalance(previous: TransactionEntity?, next: TransactionEntity?) {
+        val deltas = mutableMapOf<String, Double>()
+        previous?.cashAccountId?.let { id -> deltas[id] = -(if (previous.type == "income") previous.amount else -previous.amount) }
+        next?.cashAccountId?.let { id -> deltas[id] = (deltas[id] ?: 0.0) + if (next.type == "income") next.amount else -next.amount }
+        for ((id, delta) in deltas) {
+            val account = accountDao.getAccountById(id)
+            if (account == null && next?.cashAccountId != id) continue // A deleted account must not prevent deleting its old transaction.
+            requireNotNull(account) { "Денежный счёт удалён" }
+            require(account.budgetId == (next ?: previous)!!.budgetId && !FinancialSemanticsCalculator.isDebtAccount(account)) { "Некорректный денежный счёт" }
+            require(delta.isFinite() && account.balance.isFinite() && (account.balance + delta).isFinite()) { "Некорректный баланс счёта" }
+            check(accountDao.updateBalance(id, delta) == 1)
+        }
+    }
+
     private suspend fun saveTransactionAndExecutionLog(transaction: TransactionEntity) {
+        val previous = transactionDao.getAllTransactions().first().firstOrNull { it.id == transaction.id }
+        synchronizeCashBalance(previous, transaction)
         transactionDao.insertTransaction(transaction)
         val linkedLog = recurringPaymentDao.getExecutionLogByTransactionId(transaction.id)
         val syncedLog = com.example.data.safetospend.RecurringTransactionConsistencyManager
             .buildEditTransactionSyncTransition(transaction, linkedLog)
         if (syncedLog != null) recurringPaymentDao.insertExecutionLog(syncedLog)
+    }
+
+    /** Atomically consume a stable confirmation ID without replacing an existing financial record. */
+    suspend fun insertConfirmedTransaction(transaction: TransactionEntity): Boolean = db.withTransaction {
+        require(transaction.type == "income" || transaction.type == "expense")
+        require(transaction.amount.isFinite() && transaction.amount > 0.0)
+        require(transaction.budgetId.isNotBlank() && transaction.id.isNotBlank())
+        java.time.LocalDate.parse(transaction.date)
+        val existing = transactionDao.getAllTransactions().first().firstOrNull { it.id == transaction.id }
+        if (existing != null) {
+            require(existing.copy(createdAt = transaction.createdAt) == transaction) {
+                "Confirmation ID belongs to a different transaction"
+            }
+            false
+        } else {
+            saveTransactionAndExecutionLog(transaction)
+            true
+        }
     }
 
     suspend fun insertTransaction(transaction: TransactionEntity) {
@@ -415,6 +536,7 @@ class BudgetRepository(
                     rollback.revertedLog?.let { recurringPaymentDao.insertExecutionLog(it) }
                     rollback.updatedPayment?.let { recurringPaymentDao.insertRecurringPayment(it) }
                 }
+                synchronizeCashBalance(transactionDao.getAllTransactions().first().firstOrNull { it.id == id }, null)
                 transactionDao.deleteTransactionById(id)
             }
             GlobalConsoleLogger.recordDbOperation(
