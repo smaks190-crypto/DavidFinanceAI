@@ -60,3 +60,31 @@
 
 ## Rollback
 Revert this PR to restore the original calendar blocks. No data migration or persisted setting is involved.
+
+---
+
+### Task 4: Stateless month selector (second incremental pass, same PR)
+
+**Files:**
+- Modify `app/src/main/java/com/example/ui/screens/PeriodBudgetScreen.kt` at the two month-arrow callbacks and the top selector.
+- Modify `app/src/main/java/com/example/ui/screens/PeriodBudgetMonthWindow.kt` (pure adjacent-month function).
+- Modify `app/src/test/java/com/example/ui/screens/PeriodBudgetMonthWindowTest.kt` (navigation tests).
+- Create `app/src/main/java/com/example/ui/screens/PeriodBudgetMonthSelector.kt` (presentation-only Compose function).
+
+**Interface:**
+- `internal data class PeriodBudgetMonthPosition(val monthIdx: Int, val year: Int)`.
+- `internal fun calculateAdjacentPeriodMonth(selectedMonthIdx: Int, selectedYear: Int, step: Int): PeriodBudgetMonthPosition`, where `step` is -1 or +1, used only by arrow clicks.
+- `@Composable internal fun PeriodBudgetMonthSelector(selectedMonthIdx: Int, selectedYear: Int, onPreviousMonth: () -> Unit, onNextMonth: () -> Unit)`.
+
+**Invariant:** The component owns no state and preserves original Box/Row modifiers, text, spacing, icons, accessibility labels, color and fonts. Parent keeps event order: optional `onChangeSelectedAnnualYear`, then `onSetPeriodType(PeriodType.MONTH)`, then `onChangeSelectedMonthIdx`. Finances, Room, Gemini and other UI remain untouched.
+
+- [ ] **RED:** add JUnit assertions for January → December of preceding year, December → January of next year, and adjacent months without year rollover.
+- [ ] Compile the pure helper/JUnit-equivalent harness without production function; expected unresolved reference, not a syntax error.
+- [ ] **GREEN:** implement adjacent-month calculation matching original two conditional branches.
+- [ ] Compile and run the pure Kotlin harness; require all navigation assertions and original calendar tests to pass.
+- [ ] Extract only the selector markup from the large screen into a stateless sibling composable; preserve event order.
+- [ ] Compare unified diff against intended selector-only changes and ensure no other screen behavior is touched.
+- [ ] Run `./gradlew :app:testDebugUnitTest :app:assembleDebug` in configured Android SDK environment (or inspect automatic CI for the precise new head SHA).
+- [ ] Instrumented UI: arrow semantics, January/December year boundary, screen layout appearance, and financial totals unaffected; explicitly report any unrun checks.
+
+**Risk:** A layout / callback event regression could remain undetected by pure Kotlin tests; it needs Compose build and on-device checks. **API cost:** zero additional Gemini calls. **Licensing:** no reference code copied.
