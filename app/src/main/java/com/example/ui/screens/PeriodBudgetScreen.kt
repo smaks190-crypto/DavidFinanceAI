@@ -69,8 +69,6 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
@@ -400,63 +398,22 @@ fun PeriodBudgetScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(ObsidianSurface)
-                    .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .clickable {
-                            val newIdx = if (selectedMonthIdx > 0) selectedMonthIdx - 1 else 11
-                            if (selectedMonthIdx == 0) onChangeSelectedAnnualYear(selectedYear - 1)
-                            onSetPeriodType(PeriodType.MONTH)
-                            onChangeSelectedMonthIdx(newIdx)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                        contentDescription = "Предыдущий месяц",
-                        tint = Slate300,
-                        modifier = Modifier.size(18.dp)
-                    )
+            PeriodBudgetMonthSelector(
+                selectedMonthIdx = selectedMonthIdx,
+                selectedYear = selectedYear,
+                onPreviousMonth = {
+                    val target = calculateAdjacentPeriodMonth(selectedMonthIdx, selectedYear, step = -1)
+                    if (target.year != selectedYear) onChangeSelectedAnnualYear(target.year)
+                    onSetPeriodType(PeriodType.MONTH)
+                    onChangeSelectedMonthIdx(target.monthIdx)
+                },
+                onNextMonth = {
+                    val target = calculateAdjacentPeriodMonth(selectedMonthIdx, selectedYear, step = 1)
+                    if (target.year != selectedYear) onChangeSelectedAnnualYear(target.year)
+                    onSetPeriodType(PeriodType.MONTH)
+                    onChangeSelectedMonthIdx(target.monthIdx)
                 }
-
-                Text(
-                    text = "${MonthsRu.getOrElse(selectedMonthIdx) { "Месяц" }} $selectedYear",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 10.dp)
-                )
-
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .clickable {
-                            val newIdx = if (selectedMonthIdx < 11) selectedMonthIdx + 1 else 0
-                            if (selectedMonthIdx == 11) onChangeSelectedAnnualYear(selectedYear + 1)
-                            onSetPeriodType(PeriodType.MONTH)
-                            onChangeSelectedMonthIdx(newIdx)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Следующий месяц",
-                        tint = Slate300,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+            )
 
             // Quick Limits & Analytics Pill
             Row(
