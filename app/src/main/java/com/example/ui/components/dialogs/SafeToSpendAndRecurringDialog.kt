@@ -442,6 +442,7 @@ internal fun RecurringPaymentsExpandableCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 48.dp)
                     .testTag("recurring_payments_expand_toggle")
                     .clickable(
                         onClickLabel = if (isUpcomingRecurringExpanded) "Свернуть регулярные платежи" else "Развернуть регулярные платежи"
@@ -607,8 +608,6 @@ internal fun RecurringPaymentsExpandableCard(
             }
         }
     }
-
-
 }
 
 @Composable
