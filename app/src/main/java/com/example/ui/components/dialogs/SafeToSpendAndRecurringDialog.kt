@@ -490,7 +490,7 @@ internal fun RecurringPaymentsExpandableCard(
                     imageVector = if (isUpcomingRecurringExpanded) {
                         Icons.Default.KeyboardArrowUp
                     } else {
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight
+                        Icons.Default.KeyboardArrowDown
                     },
                     contentDescription = null,
                     tint = Slate300
@@ -563,46 +563,46 @@ internal fun RecurringPaymentsExpandableCard(
                         }
                     }
 
-                // Management stays inside the expanded list, never as a separate overview button.
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Indigo500.copy(alpha = 0.16f))
-                        .border(1.dp, Indigo400.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
-                        .testTag("recurring_payments_manage")
-                        .clickable(onClickLabel = "Открыть управление регулярными платежами") {
-                            onOpenManager()
-                        }
-                        .padding(horizontal = 12.dp, vertical = 12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    // Management stays inside the expanded list, never as a separate overview button.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Indigo500.copy(alpha = 0.16f))
+                            .border(1.dp, Indigo400.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .testTag("recurring_payments_manage")
+                            .clickable(onClickLabel = "Открыть управление регулярными платежами") {
+                                onOpenManager()
+                            }
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.DateRange,
-                            contentDescription = null,
-                            tint = Indigo400,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = if (recurringPayments.isEmpty()) "Добавить платёж или доход" else "Добавить или изменить платежи",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontFamily = ManropeFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = Slate300,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DateRange,
+                                contentDescription = null,
+                                tint = Indigo400,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = if (recurringPayments.isEmpty()) "Добавить платёж или доход" else "Добавить или изменить платежи",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontFamily = ManropeFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = Slate300,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
-                }
                 }
             }
         }
