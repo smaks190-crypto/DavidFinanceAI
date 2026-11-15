@@ -423,7 +423,6 @@ private fun SafeToSpendOverviewSheetContent(
     var isHowCalculatedExpanded by remember { mutableStateOf(false) }
     var isDetailedMathExpanded by remember { mutableStateOf(false) }
     var isTrajectoryExpanded by remember { mutableStateOf(false) }
-    var isUpcomingRecurringExpanded by remember { mutableStateOf(false) }
 
     var essentialPromptInput by remember(result.dailyEssentialRateRub) {
         mutableStateOf(result.dailyEssentialRateRub.toInt().toString())
@@ -952,25 +951,28 @@ private fun SafeToSpendOverviewSheetContent(
             }
         }
 
-        // Section: Expandable "Регулярные платежи" + "Управление платежами" button
-        val activeRecurringCount = remember(recurringPayments) {
-            recurringPayments.count { it.status == "ACTIVE" }
+        // One entry point for the existing recurring payments manager.
+        // Counts and dates come only from the current local recurring records.
+        val recurringCardSummary = remember(recurringPayments, safeToSpendInput.todayEpochDay) {
+            buildRecurringPaymentsCardSummary(recurringPayments, safeToSpendInput.todayEpochDay)
         }
-        val activeExpenseTotal = remember(recurringPayments) {
-            recurringPayments.filter { it.status == "ACTIVE" && !it.isIncome }.sumOf { it.amount }
-        }
-        val activeIncomeTotal = remember(recurringPayments) {
-            recurringPayments.filter { it.status == "ACTIVE" && it.isIncome }.sumOf { it.amount }
-        }
-        val subtitleRecurringText = remember(recurringPayments, activeRecurringCount, activeExpenseTotal, activeIncomeTotal) {
-            if (recurringPayments.isEmpty()) {
-                "Аренда, связь, интернет и регулярные доходы"
-            } else {
-                val sampleTitles = recurringPayments.take(2).joinToString(", ") {
-                    "${it.title} (${if (it.isIncome) "+" else "−"}${formatShortCurrency(it.amount)})"
+        val subtitleRecurringText = when {
+            recurringCardSummary.hasOverdueExpense ->
+                "Активных: ${recurringCardSummary.activeCount} · есть просроченные платежи"
+            recurringCardSummary.nearestUpcomingEpochDay != null -> {
+                val due = recurringCardSummary.nearestUpcomingEpochDay
+                val dueLabel = if (due == safeToSpendInput.todayEpochDay) {
+                    "сегодня"
+                } else {
+                    formatRussianShortDate(due)
                 }
-                "$sampleTitles • ${activeRecurringCount} активн."
+                "Активных: ${recurringCardSummary.activeCount} · ближайший $dueLabel"
             }
+            recurringCardSummary.activeCount > 0 ->
+                "Активных: ${recurringCardSummary.activeCount} · нет будущих дат"
+            recurringCardSummary.pausedCount > 0 ->
+                "Нет активных · на паузе: ${recurringCardSummary.pausedCount}"
+            else -> "Добавить платёж или регулярный доход"
         }
 
         Box(
@@ -979,179 +981,57 @@ private fun SafeToSpendOverviewSheetContent(
                 .clip(RoundedCornerShape(18.dp))
                 .background(Color(0xFF121A2B))
                 .border(1.dp, GlassBorder, RoundedCornerShape(18.dp))
-                .clickable { isUpcomingRecurringExpanded = !isUpcomingRecurringExpanded }
+                .clickable(onClickLabel = "Открыть регулярные платежи") {
+                    onOpenRecurringManager()
+                }
                 .padding(14.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Emerald400.copy(alpha = 0.14f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.EventRepeat,
-                                contentDescription = null,
-                                tint = Emerald400,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Регулярные платежи",
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontFamily = ManropeFontFamily,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = subtitleRecurringText,
-                                color = Slate400,
-                                fontSize = 12.sp,
-                                fontFamily = ManropeFontFamily,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = if (isUpcomingRecurringExpanded) {
-                            Icons.Default.KeyboardArrowUp
-                        } else {
-                            Icons.AutoMirrored.Filled.KeyboardArrowRight
-                        },
-                        contentDescription = null,
-                        tint = Slate300
-                    )
-                }
-
-                AnimatedVisibility(
-                    visible = isUpcomingRecurringExpanded,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        HorizontalDivider(color = GlassBorder)
-                        if (recurringPayments.isEmpty() && result.upcomingObligations.isEmpty()) {
-                            Text(
-                                text = "Нет запланированных регулярных платежей или зарплат. Нажмите «Управление платежами», чтобы добавить их.",
-                                color = Slate400,
-                                fontSize = 12.sp,
-                                fontFamily = ManropeFontFamily
-                            )
-                        } else {
-                            val sortedPreview = remember(recurringPayments, safeToSpendInput.todayEpochDay) {
-                                recurringPayments.sortedBy { it.nextDueDateEpochDay }.take(6)
-                            }
-                            sortedPreview.forEach { item ->
-                                val isOverdue = !item.isIncome &&
-                                    item.status == "ACTIVE" &&
-                                    item.nextDueDateEpochDay < safeToSpendInput.todayEpochDay
-                                val statusText = when {
-                                    item.status != "ACTIVE" -> "На паузе"
-                                    isOverdue -> "Просрочено • ${formatRussianShortDate(item.nextDueDateEpochDay)}"
-                                    item.nextDueDateEpochDay == safeToSpendInput.todayEpochDay -> "Сегодня"
-                                    else -> formatRussianShortDate(item.nextDueDateEpochDay)
-                                }
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(Color.White.copy(alpha = 0.03f))
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = item.title,
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontFamily = ManropeFontFamily,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "${if (item.isIncome) "Доход" else item.categoryName} • $statusText",
-                                            color = if (isOverdue) Rose500 else Slate400,
-                                            fontSize = 11.sp,
-                                            fontFamily = ManropeFontFamily
-                                        )
-                                    }
-                                    Text(
-                                        text = (if (item.isIncome) "+" else "−") + formatFullCurrency(item.amount),
-                                        color = if (item.isIncome) Emerald400 else Color.White,
-                                        fontSize = 13.sp,
-                                        fontFamily = SpaceGroteskFontFamily,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Indigo full-width "Управление платежами" button matching mockup
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xFF4338CA),
-                            Color(0xFF3730A3)
-                        )
-                    )
-                )
-                .border(1.dp, Indigo400.copy(alpha = 0.45f), RoundedCornerShape(18.dp))
-                .clickable { onOpenRecurringManager() }
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-        ) {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.14f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DateRange,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Text(
-                    text = "Управление платежами",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.Bold,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.weight(1f)
-                )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Emerald400.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.EventRepeat,
+                            contentDescription = null,
+                            tint = Emerald400,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Регулярные платежи",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontFamily = ManropeFontFamily,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = subtitleRecurringText,
+                            color = Slate400,
+                            fontSize = 12.sp,
+                            fontFamily = ManropeFontFamily,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.85f)
+                    tint = Slate300
                 )
             }
         }
