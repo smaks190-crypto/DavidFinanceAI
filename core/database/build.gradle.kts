@@ -3,6 +3,10 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
 }
 
+ksp {
+  arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
   namespace = "com.example.core.database"
   compileSdk { version = release(36) { minorApiLevel = 1 } }

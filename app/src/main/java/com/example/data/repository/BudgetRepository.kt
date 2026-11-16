@@ -534,7 +534,7 @@ class BudgetRepository(
                             payment = payment
                         )
                     rollback.revertedLog?.let { recurringPaymentDao.insertExecutionLog(it) }
-                    rollback.updatedPayment?.let { recurringPaymentDao.insertRecurringPayment(it) }
+                    rollback.updatedPayment?.let { recurringPaymentDao.updateNextDueDate(it.id, it.nextDueDateEpochDay) }
                 }
                 synchronizeCashBalance(transactionDao.getAllTransactions().first().firstOrNull { it.id == id }, null)
                 transactionDao.deleteTransactionById(id)
@@ -605,16 +605,21 @@ class BudgetRepository(
         }
     }
 
+    /** Returns the newly created transaction, or null when this occurrence was already paid. */
     suspend fun confirmRecurringPaymentExecution(
         paymentId: Long,
-        scheduledEpochDay: Long? = null,
+        scheduledEpochDay: Long,
         executedEpochDay: Long = java.time.LocalDate.now().toEpochDay(),
         actualAmount: Double? = null
     ): TransactionEntity? {
         return db.withTransaction {
             val payment = recurringPaymentDao.getRecurringPaymentById(paymentId) ?: return@withTransaction null
-            val targetScheduled = scheduledEpochDay ?: payment.nextDueDateEpochDay
+            val targetScheduled = scheduledEpochDay
             val existingLog = recurringPaymentDao.getExecutionLogBySchedule(paymentId, targetScheduled)
+            // Room serializes this check and all writes, including concurrent confirmations.
+            // A linked transaction must never be replaced by a second financial operation.
+            if (existingLog?.status == com.example.data.safetospend.ExecutionStatus.PAID.name ||
+                existingLog?.linkedTransactionId != null) return@withTransaction null
             val transition = com.example.data.safetospend.RecurringTransactionConsistencyManager.buildConfirmationTransition(
                 payment = payment,
                 scheduledEpochDay = targetScheduled,
@@ -623,7 +628,8 @@ class BudgetRepository(
                 existingLogId = existingLog?.id ?: 0L
             )
             transactionDao.insertTransaction(transition.transaction)
-            recurringPaymentDao.insertRecurringPayment(transition.updatedPayment)
+            // REPLACE would delete the parent row and cascade-delete its execution history.
+            recurringPaymentDao.updateNextDueDate(payment.id, transition.updatedPayment.nextDueDateEpochDay)
             recurringPaymentDao.insertExecutionLog(transition.executionLog)
             transition.transaction
         }

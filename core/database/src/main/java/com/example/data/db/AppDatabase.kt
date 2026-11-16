@@ -180,7 +180,7 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
         ConfirmedFinancialOperationEntity::class
     ],
     version = 7,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun budgetProfileDao(): BudgetProfileDao
