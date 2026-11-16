@@ -172,7 +172,7 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
         RecurringExecutionLogEntity::class
     ],
     version = 6,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun budgetProfileDao(): BudgetProfileDao

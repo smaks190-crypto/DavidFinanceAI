@@ -269,7 +269,7 @@ fun SafeToSpendAndRecurringDialog(
         priority: String,
         incomeTier: String
     ) -> Unit = { _, _, _, _, _, _, _, _, _ -> },
-    onConfirmRecurringPayment: (Long) -> Unit,
+    onConfirmRecurringPayment: (Long, Long) -> Unit,
     onToggleRecurringStatus: (Long, String) -> Unit,
     onDeleteRecurringPayment: (Long) -> Unit,
     onDismiss: () -> Unit
