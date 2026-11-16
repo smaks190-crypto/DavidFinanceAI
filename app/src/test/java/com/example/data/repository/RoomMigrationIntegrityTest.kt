@@ -61,7 +61,9 @@ class RoomMigrationIntegrityTest {
                 .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .allowMainThreadQueries().build()
 
-            open().use { db ->
+            val migrated = open()
+            try {
+                val db = migrated
                 // The first query forces migration and validates every table, column, index and FK.
                 val transactions = db.transactionDao().getAllTransactions().first()
                 assertEquals(6, db.openHelper.writableDatabase.version)
@@ -95,15 +97,17 @@ class RoomMigrationIntegrityTest {
                     title = "Rent", amount = 1250.50, categoryName = "Food", nextDueDateEpochDay = 20789))
                 db.recurringPaymentDao().insertExecutionLog(RecurringExecutionLogEntity(id = 51, budgetId = "b1",
                     recurringId = 41, scheduledEpochDay = 20758, status = "PAID", linkedTransactionId = "expense-b1"))
-            }
-            open().use { db ->
+            } finally { migrated.close() }
+            val reopened = open()
+            try {
+                val db = reopened
                 assertEquals(6, db.transactionDao().getAllTransactions().first().size)
                 assertEquals("expense-b1", db.recurringPaymentDao().getExecutionLogBySchedule(41, 20758)!!.linkedTransactionId)
                 db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
                 db.openHelper.writableDatabase.query("PRAGMA integrity_check").use {
                     assertTrue(it.moveToFirst()); assertEquals("ok", it.getString(0))
                 }
-            }
+            } finally { reopened.close() }
         } finally { context.deleteDatabase(name) }
     }
 }
