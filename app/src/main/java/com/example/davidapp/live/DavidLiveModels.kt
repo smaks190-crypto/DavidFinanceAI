@@ -194,6 +194,11 @@ object DavidLiveVisualStateResolver {
             return DavidLiveVisualState.CONNECTING
         }
 
+        // A closed/idle session must ignore late audio and processing signals.
+        if (connectionState == DavidLiveConnectionState.IDLE || connectionState == DavidLiveConnectionState.ENDED) {
+            return DavidLiveVisualState.IDLE_LISTENING
+        }
+
         // 5. Говорит Давид (только при реальном воспроизведении аудио или в коротком окне удержания между фразами)
         val davidSpeakingNow = activeSpeaker == DavidLiveSpeaker.DAVID ||
             (connectionState == DavidLiveConnectionState.DAVID_SPEAKING && !isPlaybackDrained) ||
@@ -441,9 +446,9 @@ object DavidLiveVisualStateResolver {
 
             DavidLiveVisualState.SUCCESS -> DavidLiveVisualMetadata(
                 visualState = visualState,
-                title = "Готово!",
-                subtitle = "Отлично, я всё понял!",
-                badgeText = "DONE",
+                title = "Давид на связи",
+                subtitle = "Соединение подтверждено. Можно продолжать разговор.",
+                badgeText = "READY",
                 actionType = DavidLiveVisualActionType.NONE,
                 actionLabel = null,
                 sphereTapTriggersReconnect = false,
