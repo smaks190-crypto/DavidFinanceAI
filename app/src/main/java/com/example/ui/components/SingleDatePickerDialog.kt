@@ -37,6 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -57,6 +61,26 @@ fun SingleDatePickerDialog(
     initialDate: String,
     onDismiss: () -> Unit,
     onConfirm: (selectedDate: String) -> Unit
+) {
+    SwipeToDismissDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        SingleDatePickerContent(initialDate, onDismiss, onConfirm, Modifier.fillMaxSize())
+    }
+}
+
+/** Shared calendar body for the original modal and the manual input panel. */
+@Composable
+internal fun SingleDatePickerContent(
+    initialDate: String,
+    onDismiss: () -> Unit,
+    onConfirm: (selectedDate: String) -> Unit,
+    modifier: Modifier = Modifier,
+    embedded: Boolean = false
 ) {
     var selectedDate by remember { mutableStateOf(initialDate.ifBlank { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }) }
 
@@ -97,21 +121,15 @@ fun SingleDatePickerDialog(
         swipeEnabledState.value = !listState.isScrollInProgress
     }
 
-    SwipeToDismissDialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier = modifier,
             color = DarkBg
         ) {
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                // Top drag handle bar
+                // Top drag handle bar (outer manual pane already has its own)
+                if (!embedded) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -125,6 +143,8 @@ fun SingleDatePickerDialog(
                             .clip(CircleShape)
                             .background(Slate700)
                     )
+                }
+
                 }
 
                 // Header Top Bar
@@ -249,6 +269,11 @@ fun SingleDatePickerDialog(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .height(40.dp)
+                                                    .testTag("calendar_day_$dateStr")
+                                                    .semantics {
+                                                        contentDescription = "$dayNum ${MonthNamesGenitive[monthInfo.monthIdx]} ${monthInfo.year}"
+                                                        selected = isSelected
+                                                    }
                                                     .then(
                                                         if (isSelected) {
                                                             Modifier
@@ -283,18 +308,17 @@ fun SingleDatePickerDialog(
                 // Bottom Confirm Button
                 Surface(
                     color = Slate900,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
+                    modifier = if (embedded) Modifier.fillMaxWidth()
+                        else Modifier.fillMaxWidth().navigationBarsPadding()
                 ) {
                     Box(
                         modifier = Modifier
-                            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 36.dp)
+                            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = if (embedded) 12.dp else 36.dp)
                     ) {
                         Button(
                             onClick = {
                                 onConfirm(selectedDate)
-                                onDismiss()
+                                if (!embedded) onDismiss()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
                             shape = RoundedCornerShape(14.dp),
@@ -308,5 +332,4 @@ fun SingleDatePickerDialog(
                 }
             }
         }
-    }
 }

@@ -69,7 +69,6 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Mic
@@ -203,24 +202,11 @@ fun PeriodBudgetScreen(
     onEditTransaction: ((TransactionEntity) -> Unit)? = null,
     onOpenRecentTransactionsScreen: (() -> Unit)? = null
 ) {
-    val monthStart = remember(selectedMonthIdx, selectedYear) {
-        val monthFormatted = String.format(Locale.US, "%02d", selectedMonthIdx + 1)
-        "$selectedYear-$monthFormatted-01"
+    val monthWindow = remember(selectedMonthIdx, selectedYear) {
+        calculatePeriodMonthWindow(selectedMonthIdx, selectedYear)
     }
-
-    val daysInSelectedMonth = remember(selectedMonthIdx, selectedYear) {
-        Calendar.getInstance().apply {
-            set(Calendar.YEAR, selectedYear)
-            set(Calendar.MONTH, selectedMonthIdx)
-            set(Calendar.DAY_OF_MONTH, 1)
-        }.getActualMaximum(Calendar.DAY_OF_MONTH)
-    }
-
-    val monthEnd = remember(selectedMonthIdx, selectedYear, daysInSelectedMonth) {
-        val monthFormatted = String.format(Locale.US, "%02d", selectedMonthIdx + 1)
-        val dayFormatted = String.format(Locale.US, "%02d", daysInSelectedMonth)
-        "$selectedYear-$monthFormatted-$dayFormatted"
-    }
+    val monthStart = monthWindow.start
+    val monthEnd = monthWindow.end
 
     val monthTransactions = remember(allTransactions, monthStart, monthEnd) {
         allTransactions.filter { it.date >= monthStart && it.date <= monthEnd }
@@ -235,9 +221,7 @@ fun PeriodBudgetScreen(
 
     // Previous month comparison (MoM %)
     val (prevMonthIncome, prevMonthExpense) = remember(allTransactions, selectedMonthIdx, selectedYear) {
-        val prevIdx = if (selectedMonthIdx > 0) selectedMonthIdx - 1 else 11
-        val prevYear = if (selectedMonthIdx > 0) selectedYear else selectedYear - 1
-        val prevPrefix = String.format(Locale.US, "%04d-%02d", prevYear, prevIdx + 1)
+        val prevPrefix = monthWindow.previousMonthPrefix
         val prevTxs = allTransactions.filter { it.date.startsWith(prevPrefix) }
         val pInc = prevTxs.filter { it.type == "income" }.sumOf { it.amount }
         val pExp = prevTxs.filter { it.type == "expense" }.sumOf { it.amount }
@@ -354,9 +338,7 @@ fun PeriodBudgetScreen(
     }
     val prevMonthPeriodSemantics = remember(allTransactions, filteredTransactions, selectedMonthIdx, selectedYear, accountsList) {
         val txSource = if (allTransactions.isNotEmpty()) allTransactions else filteredTransactions
-        val prevIdx = if (selectedMonthIdx > 0) selectedMonthIdx - 1 else 11
-        val prevYear = if (selectedMonthIdx > 0) selectedYear else selectedYear - 1
-        val prevPrefix = String.format(Locale.US, "%04d-%02d", prevYear, prevIdx + 1)
+        val prevPrefix = monthWindow.previousMonthPrefix
         val prevTxs = allTransactions.filter { it.date.startsWith(prevPrefix) }
         com.example.data.repository.FinancialSemanticsCalculator.calculateSnapshot(
             allTransactions = txSource,
@@ -417,63 +399,22 @@ fun PeriodBudgetScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(ObsidianSurface)
-                    .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .clickable {
-                            val newIdx = if (selectedMonthIdx > 0) selectedMonthIdx - 1 else 11
-                            if (selectedMonthIdx == 0) onChangeSelectedAnnualYear(selectedYear - 1)
-                            onSetPeriodType(PeriodType.MONTH)
-                            onChangeSelectedMonthIdx(newIdx)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                        contentDescription = "Предыдущий месяц",
-                        tint = Slate300,
-                        modifier = Modifier.size(18.dp)
-                    )
+            PeriodBudgetMonthSelector(
+                selectedMonthIdx = selectedMonthIdx,
+                selectedYear = selectedYear,
+                onPreviousMonth = {
+                    val target = calculateAdjacentPeriodMonth(selectedMonthIdx, selectedYear, step = -1)
+                    if (target.year != selectedYear) onChangeSelectedAnnualYear(target.year)
+                    onSetPeriodType(PeriodType.MONTH)
+                    onChangeSelectedMonthIdx(target.monthIdx)
+                },
+                onNextMonth = {
+                    val target = calculateAdjacentPeriodMonth(selectedMonthIdx, selectedYear, step = 1)
+                    if (target.year != selectedYear) onChangeSelectedAnnualYear(target.year)
+                    onSetPeriodType(PeriodType.MONTH)
+                    onChangeSelectedMonthIdx(target.monthIdx)
                 }
-
-                Text(
-                    text = "${MonthsRu.getOrElse(selectedMonthIdx) { "Месяц" }} $selectedYear",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontFamily = ManropeFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 10.dp)
-                )
-
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .clickable {
-                            val newIdx = if (selectedMonthIdx < 11) selectedMonthIdx + 1 else 0
-                            if (selectedMonthIdx == 11) onChangeSelectedAnnualYear(selectedYear + 1)
-                            onSetPeriodType(PeriodType.MONTH)
-                            onChangeSelectedMonthIdx(newIdx)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Следующий месяц",
-                        tint = Slate300,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+            )
 
             // Quick Limits & Analytics Pill
             Row(
