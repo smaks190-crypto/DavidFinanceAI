@@ -706,6 +706,7 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
         )
 
     private fun proposeLiveOperations(turns: List<DavidLiveTranscriptTurn>) {
+        val parsingApiKey = currentApiKey
         val budgetId = currentBudgetId
         val generation = profileGeneration
         viewModelScope.launch {
@@ -729,7 +730,27 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val (operation, accounts) = try {
                     val parsed = when (val result = DavidLiveFinancialOperationParser.parse(turn.text)) {
-                        DavidLiveFinancialOperationParser.Result.Ordinary -> tryParseOperationFromChat(turn.text) ?: continue
+                        DavidLiveFinancialOperationParser.Result.Ordinary -> {
+                            val operation = com.example.davidapp.live.DavidLiveAmbiguousOperationResolver.resolve(
+                                text = turn.text, hasKey = parsingApiKey.isNotBlank(),
+                                local = { tryParseOperationFromChat(turn.text) },
+                                remote = {
+                                    val categories = repository.getCategoriesForBudget(budgetId).first()
+                                    if (profileGeneration != generation || currentBudgetId != budgetId) throw kotlinx.coroutines.CancellationException("Profile changed")
+                                    repository.parseVoiceOperations(turn.text, parsingApiKey,
+                                        categories.filter { it.type == "expense" }.map { it.name },
+                                        categories.filter { it.type == "income" }.map { it.name })
+                                }
+                            )
+                            if (operation == null) {
+                                if (profileGeneration == generation && currentBudgetId == budgetId &&
+                                    com.example.davidapp.live.DavidLiveAmbiguousOperationResolver.eligible(turn.text)) {
+                                    _liveOperationClarification.value = "Уточните одну операцию: сумму, категорию и дату. Ничего не записано."
+                                }
+                                continue
+                            }
+                            operation
+                        }
                         is DavidLiveFinancialOperationParser.Result.Draft -> result.operation
                         is DavidLiveFinancialOperationParser.Result.Clarify -> {
                             _liveOperationClarification.value = result.message
