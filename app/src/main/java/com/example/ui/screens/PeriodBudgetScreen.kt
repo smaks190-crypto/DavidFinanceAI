@@ -1350,7 +1350,7 @@ fun PeriodBudgetScreen(
                 onUpdateRecurringPayment = { id, title, amount, type, category, frequency, dueDate, priority, tier ->
                     viewModel?.updateRecurringPayment(id, title, amount, type, category, frequency, dueDate, priority, tier)
                 },
-                onConfirmRecurringPayment = { viewModel?.confirmRecurringPayment(it) },
+                onConfirmRecurringPayment = { id, scheduledDay -> viewModel?.confirmRecurringPayment(id, scheduledDay) },
                 onToggleRecurringStatus = { id, status -> viewModel?.toggleRecurringPaymentStatus(id, status) },
                 onDeleteRecurringPayment = { viewModel?.deleteRecurringPayment(it) },
                 onDismiss = { showSafeToSpendDialog = false }
