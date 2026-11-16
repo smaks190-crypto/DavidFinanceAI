@@ -83,6 +83,7 @@ class BudgetBackupManager(
     }
 
     private suspend fun deleteBudgetData(budgetId: String) {
+        db.confirmedFinancialOperationDao().deleteForBudget(budgetId)
         db.recurringPaymentDao().deleteExecutionLogsByBudgetId(budgetId)
         db.recurringPaymentDao().deleteRecurringPaymentsByBudgetId(budgetId)
         db.transactionDao().deleteTransactionsByBudgetId(budgetId)

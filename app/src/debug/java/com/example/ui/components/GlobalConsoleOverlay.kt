@@ -2167,7 +2167,7 @@ private fun copyTextToClipboard(
     toastText: String
 ) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-    val clip = ClipData.newPlainText(label, text)
+    val clip = ClipData.newPlainText(GlobalConsoleLogger.maskSensitive(label), GlobalConsoleLogger.maskSensitive(text))
     clipboard?.setPrimaryClip(clip)
     Toast.makeText(context, toastText, Toast.LENGTH_SHORT).show()
 }
@@ -2177,7 +2177,7 @@ private fun shareDiagnosticReport(context: Context, reportText: String) {
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, "Obsidian Neo-Bank — Debug Diagnostic Report")
-            putExtra(Intent.EXTRA_TEXT, reportText)
+            putExtra(Intent.EXTRA_TEXT, GlobalConsoleLogger.maskSensitive(reportText))
         }
         val chooser = Intent.createChooser(sendIntent, "Поделиться диагностическим отчётом").apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

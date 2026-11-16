@@ -16,9 +16,9 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class RoomMigrationIntegrityTest {
-    @Test fun reconstructedVersion3MigratesTo6() = verifyMigration(3)
-    @Test fun historicalVersion4MigratesTo6() = verifyMigration(4)
-    @Test fun historicalVersion5MigratesTo6() = verifyMigration(5)
+    @Test fun reconstructedVersion3MigratesTo7() = verifyMigration(3)
+    @Test fun historicalVersion4MigratesTo7() = verifyMigration(4)
+    @Test fun historicalVersion5MigratesTo7() = verifyMigration(5)
 
     private fun verifyMigration(version: Int) = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -62,7 +62,7 @@ class RoomMigrationIntegrityTest {
             }
 
             fun open() = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .allowMainThreadQueries().build()
 
             val migrated = open()
@@ -70,7 +70,7 @@ class RoomMigrationIntegrityTest {
                 val db = migrated
                 // The first query forces migration and validates every table, column, index and FK.
                 val transactions = db.transactionDao().getAllTransactions().first()
-                assertEquals(6, db.openHelper.writableDatabase.version)
+                assertEquals(7, db.openHelper.writableDatabase.version)
                 assertEquals(4, transactions.size)
                 assertEquals(setOf("b1", "b2"), db.budgetProfileDao().getAllProfiles().first().map { it.id }.toSet())
                 for (budget in listOf("b1", "b2")) {
