@@ -55,6 +55,10 @@ internal class BudgetBackupCodec {
         val transactionById = transactions.associateBy { it.id }
         val paymentById = payments.associateBy { it.id }
         transactions.forEach { tx ->
+            if (tx.cashAccountId != null) {
+                val cash = accountById[tx.cashAccountId]
+                require(cash?.budgetId == tx.budgetId && cash != null && !FinancialSemanticsCalculator.isDebtAccount(cash)) { "Invalid cash account" }
+            }
             if (tx.accountId != null) {
                 require(accountById[tx.accountId]?.budgetId == tx.budgetId) { "Invalid transaction account" }
             }
@@ -108,7 +112,7 @@ internal class BudgetBackupCodec {
             profileName = profiles.firstOrNull()?.name,
             accounts = backup.accounts.orEmpty().map { it.copy(id = accountIds.getValue(it.id), budgetId = budgetId(it.budgetId)) },
             transactions = backup.transactions.orEmpty().map {
-                it.copy(id = transactionIds.getValue(it.id), budgetId = budgetId(it.budgetId), accountId = it.accountId?.let(accountIds::getValue))
+                it.copy(id = transactionIds.getValue(it.id), budgetId = budgetId(it.budgetId), accountId = it.accountId?.let(accountIds::getValue), cashAccountId = it.cashAccountId?.let(accountIds::getValue))
             },
             goals = backup.goals.orEmpty().map { it.copy(id = if (targetBudgetId == null) it.id else newId(), budgetId = budgetId(it.budgetId)) },
             categories = backup.categories.orEmpty().map { it.copy(id = if (targetBudgetId == null) it.id else newId(), budgetId = budgetId(it.budgetId)) },

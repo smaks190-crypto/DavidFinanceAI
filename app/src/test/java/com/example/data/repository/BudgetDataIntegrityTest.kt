@@ -11,6 +11,9 @@ import com.example.data.db.RecurringPaymentEntity
 import com.example.data.db.TransactionEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.Dispatchers
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -40,6 +43,35 @@ class BudgetDataIntegrityTest {
 
     @After
     fun tearDown() { db.close() }
+
+    @Test fun repeatedConfirmationDoesNotReplaceExistingRecord() = runBlocking {
+        val tx = TransactionEntity(id = "confirmation", type = "expense", date = "2026-11-13",
+            category = "Продукты", subcategory = "Покупка", amount = 450.0, createdAt = 1L)
+        assertTrue(repository.insertConfirmedTransaction(tx))
+        assertFalse(repository.insertConfirmedTransaction(tx.copy(createdAt = 2L)))
+        assertEquals(listOf(tx), db.transactionDao().getAllTransactions().first())
+        try {
+            repository.insertConfirmedTransaction(tx.copy(amount = 900.0))
+            fail("A changed confirmation must not overwrite the original")
+        } catch (_: IllegalArgumentException) { }
+        assertEquals(listOf(tx), db.transactionDao().getAllTransactions().first())
+    }
+
+    @Test fun concurrentConfirmationsCommitExactlyOnce() = runBlocking {
+        val tx = TransactionEntity(id = "concurrent-confirmation", type = "expense", date = "2026-11-13",
+            category = "Продукты", subcategory = "Покупка", amount = 450.0)
+        val results = (1..8).map { async(Dispatchers.IO) { repository.insertConfirmedTransaction(tx) } }.awaitAll()
+        assertEquals(1, results.count { it })
+        assertEquals(listOf(tx), db.transactionDao().getAllTransactions().first())
+    }
+
+    @Test fun invalidConfirmationDoesNotWriteFinancialData() = runBlocking {
+        val tx = TransactionEntity(id = "invalid", type = "expense", date = "2026-11-13",
+            category = "Продукты", subcategory = "Покупка", amount = Double.NaN)
+        try { repository.insertConfirmedTransaction(tx); fail("Invalid amount") }
+        catch (_: IllegalArgumentException) { }
+        assertTrue(db.transactionDao().getAllTransactions().first().isEmpty())
+    }
 
     private suspend fun seed(budgetId: String = "default"): TransactionEntity {
         db.budgetProfileDao().insertProfile(BudgetProfileEntity(id = budgetId, name = "Budget $budgetId"))

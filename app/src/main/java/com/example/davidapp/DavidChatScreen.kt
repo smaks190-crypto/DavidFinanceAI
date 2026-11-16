@@ -415,6 +415,26 @@ fun DavidChatScreen(
         }
     }
 
+    val savingOperationId by viewModel.savingOperationId.collectAsState()
+    val pendingOperation by viewModel.pendingLiveOperation.collectAsState()
+    val operationError by viewModel.liveOperationError.collectAsState()
+    val operationAccounts by viewModel.liveOperationAccounts.collectAsState()
+    val operationClarification by viewModel.liveOperationClarification.collectAsState()
+    pendingOperation?.let { message ->
+        com.example.davidapp.live.DavidLiveFinancialConfirmationDialog(
+            operation = (message.type as ChatMessageType.ParsedTransactionProposal).operation,
+            accounts = operationAccounts, saving = savingOperationId == message.id, error = operationError,
+            onChange = viewModel::updatePendingLiveOperation,
+            onConfirm = { viewModel.confirmChatProposedOperation(message.id, effectiveSoundManager) },
+            onDismiss = { viewModel.dismissChatProposedOperation(message.id) }
+        )
+    }
+    if (pendingOperation == null && operationClarification != null) {
+        AlertDialog(onDismissRequest = viewModel::dismissLiveOperationClarification,
+            title = { Text("Уточните операцию") }, text = { Text(operationClarification.orEmpty()) },
+            confirmButton = { TextButton(onClick = viewModel::dismissLiveOperationClarification) { Text("Понятно") } })
+    }
+
     if (showAchievementsDialog) {
         AchievementsDialog(onDismiss = { showAchievementsDialog = false })
     }
