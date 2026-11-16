@@ -50,12 +50,15 @@ jobs:
             adb shell input keyevent 82
             adb shell wm dismiss-keyguard
             adb shell am force-stop com.android.launcher3
+            mkdir -p build/test-artifacts
+            nohup adb logcat -b all -v threadtime -T 1 </dev/null > build/test-artifacts/device-stream.log 2>&1 &
             ./gradlew :app:connectedDebugAndroidTest -Dorg.gradle.jvmargs="-Xmx1536m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8" -Pandroid.testInstrumentationRunnerArguments.class=com.example.davidapp.live.DavidLiveFinancialParserAndroidTest,com.example.ui.components.BudgetDocumentImportUiTest,com.example.davidapp.live.DavidLivePresentationUiTest
       - name: Collect host memory diagnostics
         if: always()
         run: |
           mkdir -p build/test-artifacts
           free -m > build/test-artifacts/host-memory.txt
+          cp -r /tmp/android-runner/emu-crash-* build/test-artifacts/ 2>/dev/null || true
           sudo dmesg --ctime | rg -i 'out of memory|oom-kill|killed process|qemu' | tail -30 > build/test-artifacts/host-oom.txt || true
       - name: Collect screenshots
         if: always()
