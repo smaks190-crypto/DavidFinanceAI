@@ -727,16 +727,26 @@ class DavidViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     continue
                 }
-                val parsed = when (val result = DavidLiveFinancialOperationParser.parse(turn.text)) {
-                    DavidLiveFinancialOperationParser.Result.Ordinary -> tryParseOperationFromChat(turn.text) ?: continue
-                    is DavidLiveFinancialOperationParser.Result.Draft -> result.operation
-                    is DavidLiveFinancialOperationParser.Result.Clarify -> {
-                        _liveOperationClarification.value = result.message
-                        continue
+                val (operation, accounts) = try {
+                    val parsed = when (val result = DavidLiveFinancialOperationParser.parse(turn.text)) {
+                        DavidLiveFinancialOperationParser.Result.Ordinary -> tryParseOperationFromChat(turn.text) ?: continue
+                        is DavidLiveFinancialOperationParser.Result.Draft -> result.operation
+                        is DavidLiveFinancialOperationParser.Result.Clarify -> {
+                            _liveOperationClarification.value = result.message
+                            continue
+                        }
                     }
+                    val accounts = repository.getAccountsForBudget(budgetId).first()
+                    DavidLiveFinancialOperationParser.resolveAccounts(parsed, turn.text, accounts) to accounts
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    if (currentBudgetId == budgetId && profileGeneration == generation) {
+                        _liveOperationClarification.value = "Не удалось подготовить операцию. Ничего не записано. Повторите запрос."
+                        if (processedLiveOperationTurns[turn.id] == turn.text) processedLiveOperationTurns.remove(turn.id)
+                    }
+                    continue
                 }
-                val accounts = repository.getAccountsForBudget(budgetId).first()
-                val operation = DavidLiveFinancialOperationParser.resolveAccounts(parsed, turn.text, accounts)
                 if (processedLiveOperationTurns[turn.id] != turn.text) continue
                 if (currentBudgetId != budgetId || profileGeneration != generation) return@launch
                 if (_savingOperationId.value == "live-proposal:${turn.id}") continue
