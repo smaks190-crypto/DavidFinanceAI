@@ -2173,14 +2173,14 @@ class DavidLiveUnitTest {
             controllerDispatcher = QueuedLiveDispatcher())
         controller.processServerMessageForTest("""{"setupComplete":{}}""")
 
-        // Начальное состояние
-        assertEquals(DavidLiveVisualState.IDLE_LISTENING, controller.visualState.value)
+        // Подтверждённое подключение кратко показывает успех.
+        assertEquals(DavidLiveVisualState.SUCCESS, controller.visualState.value)
 
         // 1. Ручной override для отладки всех 13 состояний
         controller.setDebugVisualStateOverride(DavidLiveVisualState.ANALYZING)
         assertEquals(DavidLiveVisualState.ANALYZING, controller.visualState.value)
         controller.setDebugVisualStateOverride(null)
-        assertEquals(DavidLiveVisualState.IDLE_LISTENING, controller.visualState.value)
+        assertEquals(DavidLiveVisualState.SUCCESS, controller.visualState.value)
 
         // 2. Имитация вызова финансового инструмента -> переход в FINANCE_LOOKUP
         val toolCallMsg = """
@@ -2204,7 +2204,8 @@ class DavidLiveUnitTest {
         // 3. Импульс успешного завершения
         controller.triggerSuccessPulse(durationMs = 500L)
         assertTrue(controller.isSuccessPulseActive.value)
-        assertEquals(DavidLiveVisualState.SUCCESS, controller.visualState.value)
+        assertEquals(DavidLiveVisualState.FINANCE_LOOKUP, controller.visualState.value)
+        assertTrue(controller.isToolLookupActive.value)
     }
 
     @Test
@@ -2301,10 +2302,10 @@ class DavidLiveUnitTest {
         val controller = DavidLiveSessionController(financialToolsProvider = provider,
             controllerDispatcher = QueuedLiveDispatcher())
 
-        // 1. SetupComplete подтверждает готовность сессии и переводит CONNECTING -> IDLE_LISTENING
+        // 1. SetupComplete подтверждает готовность сессии и кратко показывает SUCCESS
         controller.processServerMessageForTest("""{"setupComplete": {}}""")
         assertTrue(controller.isSessionReady.value)
-        assertEquals(DavidLiveVisualState.IDLE_LISTENING, controller.visualState.value)
+        assertEquals(DavidLiveVisualState.SUCCESS, controller.visualState.value)
 
         // 2. Пользователь произнёс фразу -> модель переходит к осмыслению (THINKING)
         controller.processServerMessageForTest(
@@ -2330,7 +2331,7 @@ class DavidLiveUnitTest {
                 controller.visualState.value == DavidLiveVisualState.ANALYZING
         )
 
-        // 4. После получения данных инструмента при приходе внутренней мысли модель переходит в ANALYZING -> PREPARING_RESPONSE
+        // 4. После получения данных инструмента показывается ANALYZING, готовые фрагменты ответа включают PREPARING_RESPONSE
         val analyzingResolved = DavidLiveVisualStateResolver.resolve(
             connectionState = DavidLiveConnectionState.LISTENING,
             activeSpeaker = DavidLiveSpeaker.NONE,
@@ -2369,10 +2370,10 @@ class DavidLiveUnitTest {
         assertEquals(DavidLiveConnectionState.ERROR, controller.connectionState.value)
         assertEquals(DavidLiveVisualState.ERROR, controller.visualState.value)
 
-        // 8. Повторный setupComplete восстанавливает рабочее состояние IDLE_LISTENING
+        // 8. setupComplete нового подключения подтверждает восстановление через SUCCESS
         controller.processServerMessageForTest("""{"setupComplete": {}}""")
         assertEquals(DavidLiveConnectionFailureKind.NONE, controller.failureKind.value)
-        assertEquals(DavidLiveVisualState.IDLE_LISTENING, controller.visualState.value)
+        assertEquals(DavidLiveVisualState.SUCCESS, controller.visualState.value)
     }
 
     @Test
