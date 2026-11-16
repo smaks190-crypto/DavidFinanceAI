@@ -959,9 +959,9 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun confirmRecurringPayment(paymentId: Long) {
+    fun confirmRecurringPayment(paymentId: Long, scheduledEpochDay: Long) {
         viewModelScope.launch {
-            val tx = repository.confirmRecurringPaymentExecution(paymentId)
+            val tx = repository.confirmRecurringPaymentExecution(paymentId, scheduledEpochDay)
             if (tx != null) {
                 _toastMessage.emit("Платёж «${tx.subcategory.ifBlank { tx.category }}» подтверждён (${tx.amount.toInt()} ₽)")
             }

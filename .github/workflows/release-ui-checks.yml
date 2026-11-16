@@ -33,13 +33,15 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Compile instrumentation tests
         run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
-      - name: Check import lifecycle and voice presentation
+      - name: Release compiler memory before emulator boot
+        run: ./gradlew --stop
+      - name: Check import lifecycle, voice presentation and calendar layout
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           target: google_apis
           ram-size: 2048M
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -camera-back none
           arch: x86_64
           profile: pixel_6
           disable-animations: true
@@ -48,10 +50,16 @@ jobs:
             adb shell input keyevent 82
             adb shell wm dismiss-keyguard
             adb shell am force-stop com.android.launcher3
-            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.ui.components.BudgetDocumentImportUiTest,com.example.davidapp.live.DavidLivePresentationUiTest,com.example.ui.components.SingleDatePickerContentUiTest
+            ./gradlew :app:connectedDebugAndroidTest -Dorg.gradle.jvmargs="-Xmx1536m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC -Dfile.encoding=UTF-8" -Pandroid.testInstrumentationRunnerArguments.class=com.example.ui.components.SingleDatePickerContentUiTest,com.example.ui.components.BudgetDocumentImportUiTest,com.example.davidapp.live.DavidLivePresentationUiTest
+      - name: Collect host memory diagnostics
+        if: always()
+        run: |
+          mkdir -p build/test-artifacts
+          free -m > build/test-artifacts/host-memory.txt
+          sudo dmesg --ctime | rg -i 'out of memory|oom-kill|killed process|qemu' | tail -30 > build/test-artifacts/host-oom.txt || true
       - name: Collect screenshots
         if: always()
-        run: adb pull /sdcard/Download/release-screenshots screenshots || true
+        run: timeout --kill-after=2s 30s adb pull /sdcard/Download/release-screenshots screenshots || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
