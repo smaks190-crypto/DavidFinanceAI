@@ -41,6 +41,10 @@ class RoomMigrationIntegrityTest {
                     if (version >= 4) {
                         old.execSQL("INSERT INTO accounts VALUES (?, ?, 'Card', 10000.25, 'card', '1234')",
                             arrayOf("account-$budget", budget))
+                        old.execSQL("INSERT INTO accounts VALUES (?, ?, 'Loan', 300.50, 'we_owe', '')",
+                            arrayOf("debt-$budget", budget))
+                        old.execSQL("INSERT INTO accounts VALUES (?, ?, 'Lent', 700.25, 'owes_us', '')",
+                            arrayOf("lent-$budget", budget))
                         old.execSQL("INSERT INTO notifications VALUES (?, ?, 'Reminder', 'Description', 'bell', 'indigo500', 123, 0)",
                             arrayOf("notification-$budget", budget))
                     }
@@ -48,10 +52,10 @@ class RoomMigrationIntegrityTest {
                     val accountValues = if (version >= 4) ", 'account-$budget'" else ""
                     val timeColumns = if (version >= 5) ", createdAt" else ""
                     val timeValues = if (version >= 5) ", 777" else ""
-                    for ((type, amount) in listOf("income" to 5000.25, "expense" to 1250.50, "debt" to 300.0)) {
+                    for ((type, amount) in listOf("income" to 5000.25, "expense" to 1250.50)) {
                         old.execSQL("INSERT INTO transactions (id, budgetId, type, date, category, subcategory, amount$accountColumns$timeColumns) " +
                             "VALUES (?, ?, ?, '2026-11-01', 'Food', 'Saved', ?$accountValues$timeValues)",
-                            arrayOf("$type-$budget", budget, type, amount))
+                            arrayOf<Any>("$type-$budget", budget, type, amount))
                     }
                 }
                 old.version = version
@@ -67,11 +71,11 @@ class RoomMigrationIntegrityTest {
                 // The first query forces migration and validates every table, column, index and FK.
                 val transactions = db.transactionDao().getAllTransactions().first()
                 assertEquals(6, db.openHelper.writableDatabase.version)
-                assertEquals(6, transactions.size)
+                assertEquals(4, transactions.size)
                 assertEquals(setOf("b1", "b2"), db.budgetProfileDao().getAllProfiles().first().map { it.id }.toSet())
                 for (budget in listOf("b1", "b2")) {
                     val rows = transactions.filter { it.budgetId == budget }
-                    assertEquals(mapOf("income" to 5000.25, "expense" to 1250.50, "debt" to 300.0), rows.associate { it.type to it.amount })
+                    assertEquals(mapOf("income" to 5000.25, "expense" to 1250.50), rows.associate { it.type to it.amount })
                     assertTrue(rows.all { it.date == "2026-11-01" && it.category == "Food" && it.subcategory == "Saved" })
                     val accountId = if (version == 3) "default_acc_$budget" else "account-$budget"
                     assertTrue(rows.all { it.accountId == accountId })
@@ -79,6 +83,19 @@ class RoomMigrationIntegrityTest {
                     val account = db.accountDao().getAccountById(accountId)!!
                     assertEquals(budget, account.budgetId)
                     assertEquals(if (version == 3) 0.0 else 10000.25, account.balance, 0.0)
+                    if (version >= 4) {
+                        val debt = db.accountDao().getAccountById("debt-$budget")!!
+                        assertEquals(budget, debt.budgetId)
+                        assertEquals("we_owe", debt.type)
+                        assertEquals(300.50, debt.balance, 0.0)
+                        val lent = db.accountDao().getAccountById("lent-$budget")!!
+                        assertEquals(budget, lent.budgetId)
+                        assertEquals("owes_us", lent.type)
+                        assertEquals(700.25, lent.balance, 0.0)
+                        val reminder = db.notificationDao().getNotificationsByBudgetId(budget).first().single()
+                        assertEquals("Reminder", reminder.title)
+                        assertFalse(reminder.isRead)
+                    }
                     db.openHelper.writableDatabase.query("SELECT currentAmount FROM goals WHERE budgetId = ?", arrayOf(budget)).use {
                         assertTrue(it.moveToFirst()); assertEquals(12000.25, it.getDouble(0), 0.0)
                     }
@@ -101,7 +118,7 @@ class RoomMigrationIntegrityTest {
             val reopened = open()
             try {
                 val db = reopened
-                assertEquals(6, db.transactionDao().getAllTransactions().first().size)
+                assertEquals(4, db.transactionDao().getAllTransactions().first().size)
                 assertEquals("expense-b1", db.recurringPaymentDao().getExecutionLogBySchedule(41, 20758)!!.linkedTransactionId)
                 db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
                 db.openHelper.writableDatabase.query("PRAGMA integrity_check").use {
