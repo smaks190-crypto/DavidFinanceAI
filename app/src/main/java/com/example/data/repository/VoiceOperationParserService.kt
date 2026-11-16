@@ -231,6 +231,7 @@ class VoiceOperationParserService(
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 val err = GeminiModelConfig.extractHttpErrorDetails(e)
                 lastError = err.userMessage
                 val isLastOrFatal = err.isFatalForAllModels || attempt >= modelsToTry.size
@@ -384,6 +385,7 @@ class VoiceOperationParserService(
                         )
                     }
                 } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                     if (e is kotlinx.coroutines.CancellationException) throw e
                     val err = GeminiModelConfig.extractHttpErrorDetails(e)
                     lastError = err.userMessage

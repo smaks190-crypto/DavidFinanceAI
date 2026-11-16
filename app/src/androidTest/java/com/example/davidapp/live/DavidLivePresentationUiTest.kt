@@ -2,6 +2,8 @@ package com.example.davidapp.live
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -10,6 +12,7 @@ import androidx.compose.ui.test.printToString
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.ui.theme.BudgetTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
@@ -55,12 +58,12 @@ class DavidLivePresentationUiTest {
     }
 
     private fun screenshot(name: String) {
-        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        automation.executeShellCommand("mkdir -p /sdcard/Download/release-screenshots").use {
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
-        }
-        automation.executeShellCommand("screencap -p /sdcard/Download/release-screenshots/$name.png").use {
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(requireNotNull(context.getExternalFilesDir(null)), "release-screenshots")
+        assertTrue("Screenshot directory is available", directory.isDirectory || directory.mkdirs())
+        val bitmap = compose.onRoot(useUnmergedTree = true).captureToImage().asAndroidBitmap()
+        File(directory, "$name.png").outputStream().use { output ->
+            assertTrue("Screenshot was encoded", bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
         }
     }
 }
