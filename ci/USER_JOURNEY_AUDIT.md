@@ -29,7 +29,7 @@ GitHub → Actions → **Visual user journey audit** → нужный запус
   конкретные замечания и предложения для каждого экрана.
 - В **Artifacts** → `user-journey-visual-audit` — ZIP с
   `build/user-journey-audit/index.html` (галерея снимков, открывается в браузере),
-  `report.md`, PNG, semantics и результатами инструментальных тестов.
+  `report.md`, PNG, semantics и журналом инструментального теста `instrumentation.log`.
 - Снимки собираются **до** выключения эмулятора, а отчёт создаётся
   даже при неудачном тесте, если их удалось сохранить.
 

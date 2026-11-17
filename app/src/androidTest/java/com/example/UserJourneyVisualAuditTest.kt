@@ -1,6 +1,7 @@
 package com.example
 
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
@@ -62,8 +63,6 @@ class UserJourneyVisualAuditTest {
             capture("05-add-expense-filled")
             compose.onNodeWithTag("save_transaction_button", useUnmergedTree = true).performClick()
             waitForClosure("save_transaction_button")
-            waitForScreen("−480\u00A0₽")
-            capture("06-dashboard-after-expense")
 
             compose.onNodeWithText("Расходы", useUnmergedTree = true)
                 .performScrollTo().performClick()
@@ -81,6 +80,8 @@ class UserJourneyVisualAuditTest {
             compose.onNode(expenseRow).assertIsDisplayed()
             compose.onNodeWithContentDescription("Закрыть").performClick()
             waitForClosure("header_counter_text")
+            compose.onNodeWithText("Можно потратить сегодня", useUnmergedTree = true).performScrollTo()
+            capture("06-dashboard-after-expense")
 
             for ((tag, heading, filename) in listOf(
                 Triple("tab_debts", "ОБЯЗАТЕЛЬСТВА И ЗАЙМЫ", "07-debts"),
@@ -107,10 +108,14 @@ class UserJourneyVisualAuditTest {
     }
 
     private fun waitForScreen(heading: String) {
-        compose.waitUntil(20_000) {
-            runCatching {
-                compose.onNodeWithText(heading, useUnmergedTree = true).assertIsDisplayed()
-            }.isSuccess
+        try {
+            compose.waitUntil(20_000) {
+                runCatching {
+                    compose.onNodeWithText(heading, useUnmergedTree = true).assertIsDisplayed()
+                }.isSuccess
+            }
+        } catch (timeout: ComposeTimeoutException) {
+            throw AssertionError("Screen heading not visible: $heading", timeout)
         }
     }
 
@@ -126,7 +131,7 @@ class UserJourneyVisualAuditTest {
     private fun capture(name: String) {
         compose.waitForIdle()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val dir = File(requireNotNull(context.getExternalFilesDir(null)), "user-journey-audit")
+        val dir = File(context.filesDir, "user-journey-audit")
         assertTrue("Could not create screenshot directory", dir.isDirectory || dir.mkdirs())
         val root = compose.onRoot(useUnmergedTree = true)
         val bitmap = root.captureToImage().asAndroidBitmap()
