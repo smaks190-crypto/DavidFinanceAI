@@ -139,6 +139,7 @@ def main() -> None:
     reviewed = 0
     successful = 0
     all_findings = []
+    ai_findings = []
     for png in shots:
         name = png.stem
         title = STEPS.get(name, name)
@@ -162,6 +163,8 @@ def main() -> None:
             try:
                 ai_text = review_with_vision(name, png, semantics)
                 successful += 1
+                if ai_text:
+                    ai_findings.append((name, title, ai_text))
             except (urllib.error.URLError, ValueError, KeyError, TimeoutError, OSError) as error:
                 ai_text = f"ИИ-анализ этого экрана недоступен: {type(error).__name__}: {error}"
         md.extend([
@@ -238,6 +241,13 @@ def main() -> None:
                 "Скачай **Artifacts → user-journey-visual-audit**, "
                 "открой `index.html` для галереи и `report.md` для замечаний.\n\n"
             )
+            if ai_findings:
+                out.write("\n### Предложения по экранам\n\n")
+                for filename, step_title, suggestion in ai_findings:
+                    out.write(f"#### {filename} — {step_title}\n\n{suggestion}\n\n")
+            if all_findings:
+                out.write("### Ошибки артефактов\n\n")
+                out.write("\n".join("- " + issue for issue in all_findings) + "\n")
             if not os.getenv("VISUAL_AUDIT_API_KEY"):
                 out.write(
                     "Для автоматических визуальных рекомендаций необходимо "
