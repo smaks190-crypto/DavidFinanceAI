@@ -78,11 +78,11 @@ jobs:
             exit "$status"
 
       - name: Build visual gallery and findings for pull requests
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
         run: python3 ci/build_user_journey_report.py --screenshots build/user-journey-raw --output build/user-journey-audit
 
       - name: Build visual gallery and optional AI recommendations
-        if: always() && github.event_name != 'pull_request'
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         env:
           VISUAL_AUDIT_API_KEY: ${{ secrets.VISUAL_AUDIT_API_KEY }}
           VISUAL_AUDIT_MODEL: ${{ vars.VISUAL_AUDIT_MODEL || 'gpt-4.1-mini' }}
