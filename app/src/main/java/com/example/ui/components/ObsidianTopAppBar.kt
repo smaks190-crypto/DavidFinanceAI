@@ -251,6 +251,7 @@ fun ObsidianTopAppBar(
                         isExpandedByNeon = false
                         onOpenDavidChat()
                     }
+                    .testTag("david_chat_open_button")
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {

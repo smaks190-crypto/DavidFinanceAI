@@ -131,7 +131,7 @@ class UserJourneyVisualAuditTest {
             waitForScreen("Можно потратить сегодня")
             capture("16-return-to-dashboard")
 
-            compose.onNodeWithText("Давид AI", useUnmergedTree = true).performClick()
+            compose.onNodeWithTag("david_chat_open_button", useUnmergedTree = true).performClick()
             waitFor("david_text_input")
             capture("17-david-chat")
             compose.onNodeWithTag("david_text_input", useUnmergedTree = true)
