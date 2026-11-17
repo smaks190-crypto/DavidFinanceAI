@@ -5,7 +5,6 @@ import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
@@ -19,11 +18,11 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.printToString
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
+import com.example.utils.GlobalConsoleLogger
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -136,11 +135,24 @@ class UserJourneyVisualAuditTest {
             waitForScreen("Можно потратить сегодня")
             capture("17-return-to-dashboard")
 
-            compose.onNodeWithTag("david_chat_open_button", useUnmergedTree = true)
-                .performTouchInput { click() }
+            compose.onNodeWithTag("profile_settings_button", useUnmergedTree = true).performClick()
+            waitFor("settings_general_item")
+            capture("18-settings-hub")
+            compose.onNodeWithTag("settings_general_item", useUnmergedTree = true).performClick()
+            waitForScreen("ОСНОВНАЯ ВАЛЮТА")
+            capture("19-settings-general")
+            compose.onNodeWithContentDescription("Назад").performClick()
+            waitFor("settings_general_item")
+            compose.onNodeWithContentDescription("Закрыть").performClick()
+            waitForClosure("settings_general_item")
+
+            compose.onNodeWithTag("david_chat_open_button", useUnmergedTree = true).performClick()
+            compose.waitUntil(5_000) {
+                GlobalConsoleLogger.systemState.value.activeModalName == "DavidChat"
+            }
             waitFor("david_chat_screen")
             waitFor("david_text_input")
-            capture("18-david-chat")
+            capture("20-david-chat")
             compose.onNodeWithTag("david_text_input", useUnmergedTree = true)
                 .performTextInput("Сколько денег у меня осталось?")
             compose.onNodeWithTag("david_send_button", useUnmergedTree = true).performClick()
@@ -152,20 +164,10 @@ class UserJourneyVisualAuditTest {
             }
             compose.onNodeWithText("Расходы за период", substring = true).assertIsDisplayed()
             compose.onNodeWithText("1200 ₽", substring = true).assertIsDisplayed()
-            capture("19-david-read-only-financial-answer")
+            capture("21-david-read-only-financial-answer")
 
             compose.onNodeWithTag("david_chat_back_button", useUnmergedTree = true).performClick()
             waitForClosure("david_text_input")
-            compose.onNodeWithTag("profile_settings_button", useUnmergedTree = true).performClick()
-            waitFor("settings_general_item")
-            capture("20-settings-hub")
-            compose.onNodeWithTag("settings_general_item", useUnmergedTree = true).performClick()
-            waitForScreen("ОСНОВНАЯ ВАЛЮТА")
-            capture("21-settings-general")
-            compose.onNodeWithContentDescription("Назад").performClick()
-            waitFor("settings_general_item")
-            compose.onNodeWithContentDescription("Закрыть").performClick()
-            waitForClosure("settings_general_item")
         } catch (failure: Throwable) {
             runCatching { capture("99-failure") }
             throw failure

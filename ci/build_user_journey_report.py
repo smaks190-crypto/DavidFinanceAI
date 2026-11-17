@@ -36,10 +36,10 @@ STEPS = {
     "15-goal-created": "Созданная цель",
     "16-annual-report": "Годовой отчёт",
     "17-return-to-dashboard": "Возврат на главную",
-    "18-david-chat": "Чат Давида",
-    "19-david-read-only-financial-answer": "Ответ Давида по данным бюджета",
-    "20-settings-hub": "Главный экран настроек",
-    "21-settings-general": "Основные настройки",
+    "18-settings-hub": "Главный экран настроек",
+    "19-settings-general": "Основные настройки",
+    "20-david-chat": "Чат Давида",
+    "21-david-read-only-financial-answer": "Ответ Давида по данным бюджета",
     "99-failure": "Экран в момент ошибки теста",
 }
 
