@@ -26,6 +26,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -43,23 +44,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CallEnd
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.PriorityHigh
-import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.QueryStats
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -127,7 +119,6 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import com.example.ui.components.BrandFrogAvatar
 import kotlinx.coroutines.delay
 import kotlin.math.cos
 
@@ -193,27 +184,6 @@ fun resolveDavidLiveStatusLabel(
         DavidLiveVisualState.IDLE_LISTENING -> {
             if (isMicMuted) "Микрофон выключен" else "Слушаю тебя..."
         }
-    }
-}
-
-/**
- * Resolves the state icon for the top status badge and contextual cloud.
- */
-private fun resolveVisualStateIcon(visualState: DavidLiveVisualState, isMicMuted: Boolean): ImageVector {
-    return when (visualState) {
-        DavidLiveVisualState.IDLE_LISTENING -> if (isMicMuted) Icons.Default.MicOff else Icons.Default.Mic
-        DavidLiveVisualState.USER_SPEAKING -> Icons.Default.GraphicEq
-        DavidLiveVisualState.THINKING -> Icons.Default.Psychology
-        DavidLiveVisualState.FINANCE_LOOKUP -> Icons.Default.Search
-        DavidLiveVisualState.ANALYZING -> Icons.Default.QueryStats
-        DavidLiveVisualState.PREPARING_RESPONSE -> Icons.Default.Psychology
-        DavidLiveVisualState.DAVID_SPEAKING -> Icons.Default.GraphicEq
-        DavidLiveVisualState.CONNECTING,
-        DavidLiveVisualState.RECONNECTING -> Icons.Default.Refresh
-        DavidLiveVisualState.OFFLINE -> Icons.Default.WifiOff
-        DavidLiveVisualState.API_MISSING -> Icons.Default.Key
-        DavidLiveVisualState.ERROR -> Icons.Default.PriorityHigh
-        DavidLiveVisualState.SUCCESS -> Icons.Default.Check
     }
 }
 
@@ -738,8 +708,7 @@ fun DavidLiveMinimizedCapsule(
  * - Centralized 13-state visual model ([DavidLiveVisualState] + [DavidLiveVisualMetadata]);
  * - Interactive 3D glowing Mesh Sphere ([DavidLiveCircularVisualizer]) with direct tap-to-reconnect
  *   in `OFFLINE` and tap-to-configure-API in `API_MISSING` / `INVALID_API_KEY`;
- * - Contextual status cloud (`david_live_subtitle_bubble`) with state badge, short title,
- *   contextual explanation, and action pill (`"Повторить"`, `"Добавить API"`, `"Настроить API"`);
+ * - Separate areas for the previous speaker, current subtitle, and connection actions;
  * - Debug/Test state switcher (`enableDebugStateSwitcher`) to manually inspect all 13 visual states
  *   and transitions without a live Gemini connection.
  */
@@ -771,7 +740,8 @@ fun DavidLiveSheet(
     debugOverrideVisualState: DavidLiveVisualState? = null,
     onSelectDebugVisualState: ((DavidLiveVisualState?) -> Unit)? = null,
     enableDebugStateSwitcher: Boolean = false,
-    subtitleSpeaker: DavidLiveSpeaker = activeSpeaker
+    subtitleSpeaker: DavidLiveSpeaker = activeSpeaker,
+    transcriptTurns: List<DavidLiveTranscriptTurn> = emptyList()
 ) {
     val context = LocalContext.current
 
@@ -831,19 +801,25 @@ fun DavidLiveSheet(
         )
     }
 
-    val (targetStatePrimaryColor, targetStateSecondaryColor) = remember(effectiveVisualState, isMicMuted) {
-        resolveVisualStateColors(effectiveVisualState, isMicMuted)
-    }
     val statePrimaryColor by animateColorAsState(
-        targetValue = targetStatePrimaryColor,
+        targetValue = resolveVisualStateColors(effectiveVisualState, isMicMuted).first,
         animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
         label = "sheet_state_primary_color"
     )
-    val stateSecondaryColor by animateColorAsState(
-        targetValue = targetStateSecondaryColor,
-        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
-        label = "sheet_state_secondary_color"
-    )
+    val currentSpeech = resolveDavidLiveSpeech(effectiveVisualState, liveSubtitle)
+        ?.takeUnless(::isDefaultStatusSubtitlePlaceholder)
+    val contextSpeaker = when {
+        currentSpeech != null && subtitleSpeaker == DavidLiveSpeaker.USER -> DavidLiveSpeaker.DAVID
+        currentSpeech != null && subtitleSpeaker == DavidLiveSpeaker.DAVID -> DavidLiveSpeaker.USER
+        effectiveVisualState in setOf(
+            DavidLiveVisualState.THINKING, DavidLiveVisualState.ANALYZING,
+            DavidLiveVisualState.FINANCE_LOOKUP, DavidLiveVisualState.PREPARING_RESPONSE
+        ) -> DavidLiveSpeaker.USER
+        else -> DavidLiveSpeaker.NONE
+    }
+    val contextTurn = if (contextSpeaker == DavidLiveSpeaker.NONE) null else {
+        transcriptTurns.lastOrNull { it.speaker == contextSpeaker && it.isFinal && !it.wasInterrupted }
+    }
 
     // Bind hardware volume buttons to the Android 17 AI Assistant / Neural Network volume channel
     DisposableEffect(context, displayMode != DavidLiveDisplayMode.HIDDEN) {
@@ -983,10 +959,7 @@ fun DavidLiveSheet(
                             IconButton(
                                 onClick = onMinimize,
                                 modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF111927))
-                                    .border(1.dp, Color(0xFF1F2D42), CircleShape)
+                                    .size(48.dp)
                                     .testTag("david_live_minimize_button")
                             ) {
                                 Icon(
@@ -997,37 +970,24 @@ fun DavidLiveSheet(
                                 )
                             }
 
-                            // Center "David Live • LIVE" pill with live state indicator dot
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(Color(0xFF0E1624))
-                                    .border(
-                                        width = 1.dp,
-                                        color = statePrimaryColor.copy(alpha = 0.42f),
-                                        shape = RoundedCornerShape(16.dp)
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Text(
+                                    "🐸",
+                                    fontSize = 24.sp,
+                                    modifier = Modifier.testTag("david_live_header_avatar")
+                                        .semantics { contentDescription = "Давид Жабов" }
+                                )
                                 Text(
                                     text = "David Live",
                                     color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .size(7.dp)
-                                        .clip(CircleShape)
-                                        .background(statePrimaryColor)
-                                )
-                                Text(
-                                    text = "LIVE",
-                                    color = statePrimaryColor,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
 
@@ -1071,10 +1031,7 @@ fun DavidLiveSheet(
                                 IconButton(
                                     onClick = onOpenApiKeySettings,
                                     modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF111927))
-                                        .border(1.dp, Color(0xFF1F2D42), CircleShape)
+                                        .size(48.dp)
                                         .testTag("david_live_settings_button")
                                 ) {
                                     Icon(
@@ -1103,92 +1060,6 @@ fun DavidLiveSheet(
                                     .padding(top = 8.dp)
                                     .testTag("david_live_debug_state_switcher")
                             )
-                        }
-
-                        Spacer(modifier = Modifier.height(if (isEmbeddedInModalCard) 8.dp else 12.dp))
-
-                        // David Avatar + "Давид Жабов" / "AI-помощник по финансам" + State Badge Pill
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f, fill = false)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(46.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            Brush.radialGradient(
-                                                colors = listOf(
-                                                    statePrimaryColor.copy(alpha = 0.35f),
-                                                    Color(0xFF0B1522)
-                                                )
-                                            )
-                                        )
-                                        .border(
-                                            width = 1.5.dp,
-                                            color = statePrimaryColor.copy(alpha = 0.78f),
-                                            shape = CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "🐸",
-                                        fontSize = 23.sp
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(11.dp))
-
-                                Column {
-                                    Text(
-                                        text = "Давид Жабов",
-                                        color = Color.White,
-                                        fontSize = 17.5.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "AI-помощник по финансам",
-                                        color = Color(0xFF7E92AC),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-
-                            // State Header Pill matching the top-of-card badge in the reference design
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(statePrimaryColor.copy(alpha = 0.14f))
-                                    .border(
-                                        width = 1.dp,
-                                        color = statePrimaryColor.copy(alpha = 0.48f),
-                                        shape = RoundedCornerShape(14.dp)
-                                    )
-                                    .padding(horizontal = 10.dp, vertical = 5.dp)
-                                    .testTag("david_live_state_badge")
-                            ) {
-                                Icon(
-                                    imageVector = resolveVisualStateIcon(effectiveVisualState, isMicMuted),
-                                    contentDescription = null,
-                                    tint = statePrimaryColor,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = visualMetadata.title,
-                                    color = statePrimaryColor,
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1
-                                )
-                            }
                         }
 
                         Spacer(modifier = Modifier.height(if (isEmbeddedInModalCard) 8.dp else 12.dp))
@@ -1231,46 +1102,54 @@ fun DavidLiveSheet(
                                 }
                             }
                         }
-                        DavidLiveSpeechOverlay(
-                            speech = resolveDavidLiveSpeech(effectiveVisualState, liveSubtitle),
-                            speaker = subtitleSpeaker,
-                            isEmbeddedInModalCard = isEmbeddedInModalCard
-                        )
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(64.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            contextTurn?.let { turn ->
+                                Column(modifier = Modifier.testTag("david_live_previous_turn")) {
+                                    Text(
+                                        text = if (turn.speaker == DavidLiveSpeaker.DAVID) "Давид Жабов" else "Ты",
+                                        color = statePrimaryColor,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = turn.text,
+                                        color = Color(0xFFADB9C9),
+                                        fontSize = 15.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
                     }
 
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    // 2. Center Morphing 3D Mesh Sphere Visualizer Area
-                    Box(
+                    BoxWithConstraints(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .weight(1f)
                             .offset { IntOffset(0, downwardShiftDp.dp.roundToPx()) },
                         contentAlignment = Alignment.Center
                     ) {
+                        val sphereSize = minOf(maxHeight, maxWidth, 288.dp)
                         // Stage A: 3D Mesh Sphere Visualizer
-                        if (circularAlpha > 0.01f) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .alpha(circularAlpha)
-                                    .scale(circularScale)
-                            ) {
-                                DavidLiveCircularVisualizer(
-                                    rayMagnitudes = rayMagnitudes,
-                                    overallEnergy = effectiveEnergy,
-                                    connectionState = connectionState,
-                                    activeSpeaker = activeSpeaker,
-                                    isMicMuted = isMicMuted,
-                                    onToggleMicMute = onToggleMicMute,
-                                    visualizerSize = if (isEmbeddedInModalCard) 244.dp else 278.dp,
-                                    visualState = effectiveVisualState,
-                                    failureKind = effectiveFailureKind,
-                                    onRetryConnection = onRetryConnection,
-                                    onOpenApiKeySettings = onOpenApiKeySettings
-                                )
-
-
-                            }
+                        if (circularAlpha > 0.01f && sphereSize > 0.dp) {
+                            DavidLiveCircularVisualizer(
+                                rayMagnitudes = rayMagnitudes,
+                                overallEnergy = effectiveEnergy,
+                                connectionState = connectionState,
+                                activeSpeaker = activeSpeaker,
+                                isMicMuted = isMicMuted,
+                                onToggleMicMute = onToggleMicMute,
+                                modifier = Modifier.alpha(circularAlpha).scale(circularScale),
+                                visualizerSize = sphereSize,
+                                visualState = effectiveVisualState,
+                                failureKind = effectiveFailureKind,
+                                onRetryConnection = onRetryConnection,
+                                onOpenApiKeySettings = onOpenApiKeySettings
+                            )
                         }
 
                         // Stage B: Morphing Horizontal Spectral Wave + Frog Badge (during minimize/expand transition)
@@ -1327,135 +1206,65 @@ fun DavidLiveSheet(
                         }
                     }
 
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    // 3. Bottom Control Bar (Mute, Red End Call / Отменить, Minimize to Chat)
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(bottomControlsAlpha)
-                            .padding(bottom = if (isEmbeddedInModalCard) 4.dp else 8.dp)
+                        modifier = Modifier.fillMaxWidth().alpha(topHeaderAlpha),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Left: Mic Mute Toggle Button
-                            Box(
-                                modifier = Modifier
-                                    .size(50.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isMicMuted) Color(0xFF94A3B8).copy(alpha = 0.16f) else CancelPillSurface
-                                    )
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (isMicMuted) Color(0xFF94A3B8).copy(alpha = 0.64f) else CancelPillBorder,
-                                        shape = CircleShape
-                                    )
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        role = Role.Button,
-                                        onClick = onToggleMicMute
-                                    )
-                                    .testTag("david_live_bottom_mute_button")
-                                    .semantics {
-                                        contentDescription = if (isMicMuted) "Включить микрофон" else "Выключить микрофон"
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (isMicMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                                    contentDescription = null,
-                                    tint = if (isMicMuted) ErrorCrimson else Color(0xFFCBD5E1),
-                                    modifier = Modifier.size(21.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(20.dp))
-
-                            // Centered end-call button
-                            Box(
-                                modifier = Modifier
-                                    .height(54.dp)
-                                    .width(160.dp)
-                                    .shadow(
-                                        elevation = 12.dp,
-                                        shape = RoundedCornerShape(27.dp),
-                                        ambientColor = ErrorCrimson,
-                                        spotColor = ErrorCrimson
-                                    )
-                                    .clip(RoundedCornerShape(27.dp))
-                                    .background(ErrorCrimson)
-                                    .border(
-                                        width = 1.dp,
-                                        color = Color(0xFFF87171).copy(alpha = 0.65f),
-                                        shape = RoundedCornerShape(27.dp)
-                                    )
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        role = Role.Button,
-                                        onClick = onEndSession
-                                    )
-                                    .testTag("david_live_cancel_button"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Отменить",
-                                    color = Color.White,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(20.dp))
-
-                            // Right: Minimize to Chat / Compact Capsule Button
-                            Box(
-                                modifier = Modifier
-                                    .size(50.dp)
-                                    .clip(CircleShape)
-                                    .background(CancelPillSurface)
-                                    .border(1.dp, CancelPillBorder, CircleShape)
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        role = Role.Button,
-                                        onClick = { (onMinimizeToChat ?: onMinimize)() }
-                                    )
-                                    .testTag("david_live_chat_minimize_button")
-                                    .semantics {
-                                        contentDescription = "Свернуть в чат"
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Chat,
-                                    contentDescription = null,
-                                    tint = Color(0xFFCBD5E1),
-                                    modifier = Modifier.size(20.dp)
+                        Box(Modifier.height(26.dp), contentAlignment = Alignment.Center) {
+                            if (effectiveVisualState == DavidLiveVisualState.USER_SPEAKING) {
+                                DavidLiveHorizontalWaveVisualizer(
+                                    rayMagnitudes = rayMagnitudes,
+                                    overallEnergy = effectiveEnergy,
+                                    connectionState = connectionState,
+                                    activeSpeaker = activeSpeaker,
+                                    isMicMuted = isMicMuted,
+                                    modifier = Modifier.width(148.dp).height(22.dp),
+                                    visualState = effectiveVisualState
                                 )
                             }
                         }
+                        Text(
+                            text = statusText,
+                            color = statePrimaryColor,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.align(
+                                when (effectiveVisualState) {
+                                    DavidLiveVisualState.USER_SPEAKING -> Alignment.End
+                                    DavidLiveVisualState.DAVID_SPEAKING -> Alignment.Start
+                                    else -> Alignment.CenterHorizontally
+                                }
+                            ).testTag("david_live_state_badge")
+                        )
+                        DavidLiveSpeechOverlay(speech = currentSpeech, speaker = subtitleSpeaker)
+                    }
 
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = Color(0xFF64748B),
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = onMinimize
-                                )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().alpha(bottomControlsAlpha),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        DavidLiveControl(
+                            label = "Микрофон",
+                            description = if (isMicMuted) "Включить микрофон" else "Выключить микрофон",
+                            icon = if (isMicMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                            tag = "david_live_bottom_mute_button",
+                            onClick = onToggleMicMute,
+                            tint = if (isMicMuted) Color(0xFFFCA5A5) else Color(0xFFE2E8F0)
+                        )
+                        DavidLiveControl(
+                            label = "Завершить",
+                            icon = Icons.Default.CallEnd,
+                            tag = "david_live_cancel_button",
+                            onClick = onEndSession,
+                            background = Color(0xFF682933)
+                        )
+                        DavidLiveControl(
+                            label = "Свернуть",
+                            description = "Свернуть в чат",
+                            icon = Icons.Default.KeyboardArrowDown,
+                            tag = "david_live_chat_minimize_button",
+                            onClick = onMinimizeToChat ?: onMinimize
                         )
                     }
                 }
@@ -1658,11 +1467,36 @@ internal fun computeHorizontalWaveBarTargetMagnitude(
 
 /** The fixed slot preserves PR #100's geometry throughout both fade transitions. */
 @Composable
-internal fun DavidLiveSpeechOverlay(
-    speech: String?,
-    speaker: DavidLiveSpeaker,
-    isEmbeddedInModalCard: Boolean
+private fun DavidLiveControl(
+    label: String,
+    icon: ImageVector,
+    tag: String,
+    onClick: () -> Unit,
+    description: String = label,
+    background: Color = Color(0xFF12222A),
+    tint: Color = Color(0xFFE2E8F0)
 ) {
+    Column(
+        modifier = Modifier.testTag(tag)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description }
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            Modifier.size(48.dp).clip(CircleShape).background(background),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+        }
+        Text(label, color = Color(0xFFADB9C9), fontSize = 12.sp, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+internal fun DavidLiveSpeechOverlay(speech: String?, speaker: DavidLiveSpeaker) {
     var lastSpeech by remember { mutableStateOf("") }
     var lastSpeaker by remember { mutableStateOf(DavidLiveSpeaker.DAVID) }
     SideEffect {
@@ -1673,22 +1507,15 @@ internal fun DavidLiveSpeechOverlay(
     }
     val displayedSpeaker = if (speech != null) speaker else lastSpeaker
     Box(
-        modifier = Modifier.fillMaxWidth()
-            .height(if (isEmbeddedInModalCard) 104.dp else 120.dp)
-            .testTag("david_live_subtitle_slot"),
-        contentAlignment = if (displayedSpeaker == DavidLiveSpeaker.USER) Alignment.CenterStart else Alignment.CenterEnd
+        modifier = Modifier.fillMaxWidth().height(90.dp).testTag("david_live_subtitle_slot"),
+        contentAlignment = if (displayedSpeaker == DavidLiveSpeaker.USER) Alignment.CenterEnd else Alignment.CenterStart
     ) {
         AnimatedVisibility(
             visible = speech != null,
             enter = fadeIn(tween(220)),
             exit = fadeOut(tween(400))
         ) {
-            Surface(
-                color = com.example.ui.theme.ObsidianSurface,
-                shape = androidx.compose.material3.MaterialTheme.shapes.medium,
-                border = BorderStroke(1.dp, com.example.ui.theme.GlassBorder),
-                modifier = Modifier.fillMaxWidth(0.88f).testTag("david_live_subtitle_bubble")
-            ) {
+            Box(modifier = Modifier.widthIn(max = 480.dp).testTag("david_live_subtitle_bubble")) {
                 StreamingLiveSpeechText(
                     text = extractActiveSpeechBubbleSegment(speech ?: lastSpeech).activeText,
                     speaker = displayedSpeaker
@@ -1717,10 +1544,10 @@ private fun StreamingLiveSpeechText(text: String, speaker: DavidLiveSpeaker) {
             append(text.substring(split))
             pop()
         },
-        style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
         color = com.example.ui.theme.Slate100,
-        maxLines = 4,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.padding(16.dp)
+        textAlign = if (speaker == DavidLiveSpeaker.USER) TextAlign.End else TextAlign.Start,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis
     )
 }

@@ -177,6 +177,7 @@ fun MorphingBottomBar(
     showNavigationTabs: Boolean = true,
     onOverlayActiveChanged: (Boolean) -> Unit = {},
     isDavidLiveActive: Boolean = false,
+    isDavidLiveExpanded: Boolean = false,
     davidLiveMinimizedCapsule: (@Composable () -> Unit)? = null,
     onDavidLiveBlocksVoiceInput: () -> Unit = {},
     modalContent: @Composable (BottomCapsuleModal) -> Unit = {},
@@ -409,6 +410,7 @@ fun MorphingBottomBar(
         editableList.isEmpty() && !showInlineConsent && !showInlineApiKey
 
     val isVoiceModal = effectiveModal is BottomCapsuleModal.VoiceInput
+    val useFlatLiveSurface = isDavidLiveExpanded && activeModal is BottomCapsuleModal.DavidChat
 
     val cornerRadius by animateDpAsState(
         targetValue = when {
@@ -423,7 +425,7 @@ fun MorphingBottomBar(
     // Неоновое переливающееся свечение рамки: фаза читается строго в фазе отрисовки (drawWithContent),
     // чтобы покадровое изменение градиента не вызывало рекомпозиций дочерних вкладок и текста.
     val needsAnimatedNeonBorder =
-        activeModal != BottomCapsuleModal.None && activeModal !is BottomCapsuleModal.VoiceInput
+        activeModal != BottomCapsuleModal.None && activeModal !is BottomCapsuleModal.VoiceInput && !useFlatLiveSurface
     val glowPhaseState = if (needsAnimatedNeonBorder) {
         val glowTransition = rememberInfiniteTransition(label = "capsule_neon_glow")
         glowTransition.animateFloat(
@@ -514,9 +516,13 @@ fun MorphingBottomBar(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .wrapContentHeight(align = Alignment.Bottom)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = if (useFlatLiveSurface) 0.dp else 16.dp, vertical = 12.dp)
                 .shadow(
-                    elevation = if (activeModal == BottomCapsuleModal.None) 18.dp else 28.dp,
+                    elevation = when {
+                        useFlatLiveSurface -> 0.dp
+                        activeModal == BottomCapsuleModal.None -> 18.dp
+                        else -> 28.dp
+                    },
                     shape = RoundedCornerShape(cornerRadius),
                     ambientColor = when {
                         activeModal is BottomCapsuleModal.VoiceInput -> Color(0xFF00E5FF)
@@ -541,6 +547,7 @@ fun MorphingBottomBar(
                 )
                 .drawWithContent {
                     drawContent()
+                    if (useFlatLiveSurface) return@drawWithContent
                     val strokeWidthPx = borderWidth.toPx()
                     val halfStroke = strokeWidthPx / 2f
                     val cornerPx = (cornerRadius.toPx() - halfStroke).coerceAtLeast(0f)

@@ -1,7 +1,9 @@
 package com.example.davidapp.live
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import com.example.ui.theme.BudgetTheme
 import org.junit.Assert.assertEquals
@@ -33,7 +35,11 @@ class DavidLiveSubtitleLayoutTest {
                     rayMagnitudes = List(32) { 0f }, overallEnergy = 0f,
                     activeSpeaker = DavidLiveSpeaker.NONE, isMicMuted = false, errorMessage = null,
                     onToggleMicMute = {}, onRetryConnection = {}, onOpenApiKeySettings = {}, onEndSession = {},
-                    isEmbeddedInModalCard = embedded
+                    isEmbeddedInModalCard = embedded,
+                    transcriptTurns = listOf(
+                        DavidLiveTranscriptTurn(speaker = DavidLiveSpeaker.DAVID, text = "Посмотрим расходы?"),
+                        DavidLiveTranscriptTurn(speaker = DavidLiveSpeaker.USER, text = "Какой остаток?")
+                    )
                 )
             }
         }
@@ -44,13 +50,17 @@ class DavidLiveSubtitleLayoutTest {
         compose.mainClock.advanceTimeBy(500)
         val bubble = compose.onNodeWithTag("david_live_subtitle_bubble", useUnmergedTree = true)
         val userBounds = bubble.fetchSemanticsNode().boundsInRoot
+        org.junit.Assert.assertTrue(userBounds.top >= originalBounds.bottom)
+        compose.onNodeWithText("Посмотрим расходы?").assertIsDisplayed()
         assertEquals(originalBounds, sphere.fetchSemanticsNode().boundsInRoot)
         compose.runOnIdle {
             speaker.value = DavidLiveSpeaker.DAVID
             text.value = "Подробный ответ о бюджете. ".repeat(15)
         }
         compose.mainClock.advanceTimeBy(500)
-        org.junit.Assert.assertTrue(bubble.fetchSemanticsNode().boundsInRoot.left > userBounds.left)
+        org.junit.Assert.assertTrue(bubble.fetchSemanticsNode().boundsInRoot.left < userBounds.left)
+        compose.onNodeWithText("Какой остаток?").assertIsDisplayed()
+        compose.onNodeWithText("Посмотрим расходы?").assertDoesNotExist()
         assertEquals(originalBounds, sphere.fetchSemanticsNode().boundsInRoot)
         compose.runOnIdle { text.value = "" }
         compose.mainClock.advanceTimeBy(200)
