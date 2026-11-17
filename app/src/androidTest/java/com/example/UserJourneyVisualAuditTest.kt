@@ -1,14 +1,20 @@
 package com.example
 
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.assertDoesNotExist
-import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.printToString
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -31,6 +37,7 @@ class UserJourneyVisualAuditTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
     @Test fun firstRunExpenseAndNavigation() {
+        val description = "Поездка на метро"
         try {
             waitFor("create_budget_fab", 40_000)
             capture("01-profile-picker")
@@ -42,6 +49,7 @@ class UserJourneyVisualAuditTest {
             compose.onNodeWithText("Создать и войти", useUnmergedTree = true).performClick()
 
             waitFor("tab_period", 30_000)
+            waitForScreen("Можно потратить сегодня")
             capture("03-new-budget-dashboard")
             compose.onNodeWithTag("embedded_add_operation_button", useUnmergedTree = true).performClick()
 
@@ -50,32 +58,59 @@ class UserJourneyVisualAuditTest {
             compose.onNodeWithTag("transaction_amount_input", useUnmergedTree = true)
                 .performTextInput("480")
             compose.onNodeWithTag("transaction_description_input", useUnmergedTree = true)
-                .performTextInput("Поездка на метро")
+                .performTextInput(description)
             capture("05-add-expense-filled")
             compose.onNodeWithTag("save_transaction_button", useUnmergedTree = true).performClick()
-            compose.waitUntil(15_000) {
-                runCatching {
-                    compose.onNodeWithTag("save_transaction_button", useUnmergedTree = true)
-                        .assertDoesNotExist()
-                    true
-                }.getOrDefault(false)
-            }
+            waitForClosure("save_transaction_button")
+            waitForScreen("−480\u00A0₽")
             capture("06-dashboard-after-expense")
 
-            for ((tag, filename) in listOf(
-                "tab_debts" to "07-debts",
-                "tab_goals" to "08-goals",
-                "tab_annual" to "09-annual-report",
-                "tab_period" to "10-return-to-dashboard"
+            compose.onNodeWithText("Расходы", useUnmergedTree = true)
+                .performScrollTo().performClick()
+            waitFor("header_counter_text")
+            compose.waitUntil(15_000) {
+                runCatching {
+                    compose.onNodeWithTag("header_counter_text", useUnmergedTree = true)
+                        .assertTextEquals("Показано 1 из 1 операций")
+                }.isSuccess
+            }
+            val historyTag = "transactions_lazy_list"
+            compose.onNodeWithTag(historyTag).performScrollToNode(hasText(description))
+            val expenseRow = hasAnyAncestor(hasTestTag(historyTag)) and
+                hasText(description) and hasText("-480 ₽")
+            compose.onNode(expenseRow).assertIsDisplayed()
+            compose.onNodeWithContentDescription("Закрыть").performClick()
+            waitForClosure("header_counter_text")
+
+            for ((tag, heading, filename) in listOf(
+                Triple("tab_debts", "ОБЯЗАТЕЛЬСТВА И ЗАЙМЫ", "07-debts"),
+                Triple("tab_goals", "КАПИТАЛ И КОПИЛКИ", "08-goals"),
+                Triple("tab_annual", "ГОДОВОЙ АУДИТ", "09-annual-report"),
+                Triple("tab_period", "Можно потратить сегодня", "10-return-to-dashboard")
             )) {
                 waitFor(tag)
                 compose.onNodeWithTag(tag, useUnmergedTree = true).performClick()
-                compose.waitForIdle()
+                waitForScreen(heading)
                 capture(filename)
             }
         } catch (failure: Throwable) {
             runCatching { capture("99-failure") }
             throw failure
+        }
+    }
+
+    private fun waitForClosure(tag: String) {
+        compose.waitUntil(15_000) {
+            compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true)
+                .fetchSemanticsNodes().isEmpty()
+        }
+    }
+
+    private fun waitForScreen(heading: String) {
+        compose.waitUntil(20_000) {
+            runCatching {
+                compose.onNodeWithText(heading, useUnmergedTree = true).assertIsDisplayed()
+            }.isSuccess
         }
     }
 

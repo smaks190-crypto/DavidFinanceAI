@@ -121,6 +121,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--screenshots", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--require-complete", action="store_true",
+                        help="Fail after writing the report if an expected capture is missing.")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     images = args.output / "images"
@@ -138,6 +140,8 @@ def main() -> None:
     html_cards = []
     reviewed = 0
     successful = 0
+    valid_captures: set[str] = set()
+    captures_with_semantics: set[str] = set()
     all_findings = []
     ai_findings = []
     for png in shots:
@@ -152,10 +156,13 @@ def main() -> None:
             continue
         output_image = images / png.name
         shutil.copy2(png, output_image)
+        valid_captures.add(name)
         semantics_file = png.with_suffix(".txt")
         semantics = semantics_file.read_text(encoding="utf-8", errors="replace") if semantics_file.exists() else ""
         if semantics_file.exists():
             shutil.copy2(semantics_file, images / semantics_file.name)
+        if semantics.strip():
+            captures_with_semantics.add(name)
         notes = possible_accessibility_issues(semantics) if semantics else []
         ai_text = ""
         if os.getenv("VISUAL_AUDIT_API_KEY"):
@@ -197,12 +204,24 @@ def main() -> None:
             f'<ul>{safe_notes}</ul></section>'
         )
 
-    if not shots:
+    expected = set(STEPS) - {"99-failure"}
+    missing_captures = sorted(expected - valid_captures)
+    missing_semantics = sorted((expected & valid_captures) - captures_with_semantics)
+    if missing_captures:
+        all_findings.append("Нет пригодных кадров для шагов: " + ", ".join(missing_captures))
+    if missing_semantics:
+        all_findings.append("Нет дерева Compose semantics для шагов: " + ", ".join(missing_semantics))
+    if not valid_captures:
         md.extend([
             "## Нет скриншотов", "",
             "Сквозной тест не сохранил снимки: проверь журнал CI, "
             "ошибку запуска эмулятора и путь к файлам.", "",
         ])
+    if all_findings:
+        md.extend(["## Ошибки артефактов", "", *("- " + issue for issue in all_findings), ""])
+    coverage = f"{len(expected & valid_captures)} из {len(expected)} шагов со скриншотами"
+    if "99-failure" in valid_captures:
+        coverage += " · есть отдельный кадр ошибки"
     md.extend([
         "## Ограничения", "",
         "Это проход по основным экранам на одном эмуляторе, "
@@ -211,7 +230,7 @@ def main() -> None:
         "выводов о дизайне. Проверки TalkBack, реального API и "
         "других размеров устройств требуют отдельного запуска.",
         "",
-        f"Снято экранов: **{len(shots)}**. "
+        f"Покрытие маршрута: **{coverage}**. "
         f"Успешных ИИ-разборов: **{successful} из {reviewed} запрошенных**.",
     ])
     (args.output / "report.md").write_text("\n".join(md) + "\n", encoding="utf-8")
@@ -228,7 +247,7 @@ def main() -> None:
         '.notes{white-space:pre-wrap;line-height:1.5}h2{font-size:18px}</style>'
         '<header><h1>David FinanceAI — визуальный аудит</h1>'
         '<p>Скриншоты реального прохождения на эмуляторе. '
-        'Ниже показаны только подтверждённые снимками экраны.</p></header>'
+        f'Ниже показаны только подтверждённые снимками экраны.</p><p>{coverage}.</p></header>'
         '<main>' + "".join(html_cards) + '</main></html>'
     )
     (args.output / "index.html").write_text(page, encoding="utf-8")
@@ -237,7 +256,7 @@ def main() -> None:
         with open(summary, "a", encoding="utf-8") as out:
             out.write("## Пользовательский визуальный аудит\n\n")
             out.write(
-                f"Скриншотов: **{len(shots)}** · ИИ-разборов: **{successful}**.\n\n"
+                f"Покрытие маршрута: **{coverage}** · ИИ-разборов: **{successful}**.\n\n"
                 "Скачай **Artifacts → user-journey-visual-audit**, "
                 "открой `index.html` для галереи и `report.md` для замечаний.\n\n"
             )
@@ -250,10 +269,12 @@ def main() -> None:
                 out.write("\n".join("- " + issue for issue in all_findings) + "\n")
             if not os.getenv("VISUAL_AUDIT_API_KEY"):
                 out.write(
-                    "Для автоматических визуальных рекомендаций необходимо "
-                    "настроить секрет `VISUAL_AUDIT_API_KEY`.\n"
+                    "ИИ-разбор выполняется при ручном запуске main с опцией `vision_review` "
+                    "и настроенным секретом `VISUAL_AUDIT_API_KEY`.\n"
                 )
-    print(f"Captured {len(shots)} screenshots, {successful} AI reviews")
+    print(f"{coverage}; {successful} AI reviews")
+    if args.require_complete and (missing_captures or missing_semantics or "99-failure" in valid_captures):
+        raise SystemExit("Incomplete visual audit: see report.md for capture diagnostics")
 
 
 if __name__ == "__main__":

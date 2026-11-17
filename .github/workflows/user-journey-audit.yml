@@ -15,6 +15,11 @@ on:
       - 'ci/build_user_journey_report.py'
       - '.github/workflows/user-journey-audit.yml'
   workflow_dispatch:
+    inputs:
+      vision_review:
+        description: 'Send synthetic screenshots to the configured vision API'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -50,6 +55,7 @@ jobs:
         run: ./gradlew --stop
 
       - name: Walk through app like a new user and capture screenshots
+        id: journey
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -73,21 +79,26 @@ jobs:
             status=$?
             # Pull before the emulator-runner stops the Android VM.
             adb pull /sdcard/Android/data/ru.personalbudget.app.aadece.preview/files/user-journey-audit/ \
-              build/user-journey-raw/ || true
+              build/user-journey-raw/ > build/user-journey-raw/adb-pull.log 2>&1 || true
+            if [ "$status" -ne 0 ]; then
+              adb logcat -d -b crash -t 250 > build/user-journey-raw/device-crash.log || true
+            fi
             echo "instrumentation_exit_code=$status" > build/user-journey-raw/test-status.txt
             exit "$status"
 
-      - name: Build visual gallery and findings for pull requests
-        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        run: python3 ci/build_user_journey_report.py --screenshots build/user-journey-raw --output build/user-journey-audit
-
       - name: Build visual gallery and optional AI recommendations
-        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always()
         env:
-          VISUAL_AUDIT_API_KEY: ${{ secrets.VISUAL_AUDIT_API_KEY }}
+          JOURNEY_OUTCOME: ${{ steps.journey.outcome }}
+          VISUAL_AUDIT_API_KEY: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.vision_review && steps.journey.outcome == 'success' && secrets.VISUAL_AUDIT_API_KEY || '' }}
           VISUAL_AUDIT_MODEL: ${{ vars.VISUAL_AUDIT_MODEL || 'gpt-4.1-mini' }}
           VISUAL_AUDIT_API_URL: ${{ vars.VISUAL_AUDIT_API_URL || 'https://api.openai.com/v1/chat/completions' }}
-        run: python3 ci/build_user_journey_report.py --screenshots build/user-journey-raw --output build/user-journey-audit
+        run: |
+          args=(--screenshots build/user-journey-raw --output build/user-journey-audit)
+          if [ "$JOURNEY_OUTCOME" = success ]; then
+            args+=(--require-complete)
+          fi
+          python3 ci/build_user_journey_report.py "${args[@]}"
 
       - name: Publish screenshots, semantics, and UX audit report
         if: always()
