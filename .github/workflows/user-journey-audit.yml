@@ -1,0 +1,94 @@
+name: Visual user journey audit
+
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'core/**'
+      - 'ci/build_user_journey_report.py'
+      - 'ci/run_user_journey_audit.sh'
+      - '.github/workflows/user-journey-audit.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'core/**'
+      - 'ci/build_user_journey_report.py'
+      - 'ci/run_user_journey_audit.sh'
+      - '.github/workflows/user-journey-audit.yml'
+  workflow_dispatch:
+    inputs:
+      vision_review:
+        description: 'Send synthetic screenshots to the configured vision API'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: user-journey-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  user-journey:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CI_EXTERNAL_EMULATOR: 'true'
+      CI_STAGED_PIPELINE: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run unit tests and compile application and instrumentation test
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+
+      - name: Free Gradle daemon memory before launching emulator
+        run: ./gradlew --stop
+
+      - name: Walk through app like a new user and capture screenshots
+        id: journey
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash ci/run_user_journey_audit.sh
+
+      - name: Build visual gallery and optional AI recommendations
+        if: always()
+        env:
+          JOURNEY_OUTCOME: ${{ steps.journey.outcome }}
+          VISUAL_AUDIT_API_KEY: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.vision_review && steps.journey.outcome == 'success' && secrets.VISUAL_AUDIT_API_KEY || '' }}
+          VISUAL_AUDIT_MODEL: ${{ vars.VISUAL_AUDIT_MODEL || 'gpt-4.1-mini' }}
+          VISUAL_AUDIT_API_URL: ${{ vars.VISUAL_AUDIT_API_URL || 'https://api.openai.com/v1/chat/completions' }}
+        run: |
+          args=(--screenshots build/user-journey-raw --output build/user-journey-audit)
+          if [ "$JOURNEY_OUTCOME" = success ]; then
+            args+=(--require-complete)
+          fi
+          python3 ci/build_user_journey_report.py "${args[@]}"
+
+      - name: Publish screenshots, semantics, and UX audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-journey-visual-audit
+          path: |
+            build/user-journey-raw
+            build/user-journey-audit
+          retention-days: 14

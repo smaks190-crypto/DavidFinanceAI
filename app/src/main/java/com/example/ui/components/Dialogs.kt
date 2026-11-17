@@ -211,7 +211,7 @@ fun AddGoalDialog(
                             onValueChange = { name = it.capitalizeFirstLetter() },
                             placeholder = { Text("Например: Новый ноутбук", color = Slate500) },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().testTag("goal_name_input"),
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = DarkBg,
@@ -249,7 +249,7 @@ fun AddGoalDialog(
                             },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().testTag("goal_target_input"),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = DarkBg,
                                 unfocusedContainerColor = DarkBg,
@@ -339,7 +339,8 @@ fun AddGoalDialog(
                             enabled = canCreate,
                             modifier = Modifier
                                 .weight(1f)
-                                .height(52.dp),
+                                .height(52.dp)
+                                .testTag("save_goal_button"),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Emerald400,
                                 disabledContainerColor = ObsidianElevated
