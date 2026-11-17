@@ -30,7 +30,7 @@ import java.io.File
 
 /**
  * Сквозной визуальный сценарий на ЧИСТОМ эмуляторе:
- * чистый профиль -> расход и история -> долг -> цель -> отчет -> Давид -> настройки.
+ * чистый профиль -> расход и история -> долг -> цель -> отчет -> настройки -> Давид.
  *
  * Только тестовые данные. Запрос Давиду проверяет локальный режим без Gemini API.
  * Не проверяет реальные банковские счета или голосовую связь.
@@ -135,12 +135,17 @@ class UserJourneyVisualAuditTest {
             waitForScreen("Можно потратить сегодня")
             capture("17-return-to-dashboard")
 
+            waitFor("achievement_unlocked_banner", 10_000)
+            capture("18-achievement-banner")
+            compose.onNodeWithTag("achievement_unlocked_banner", useUnmergedTree = true).performClick()
+            waitForClosure("achievement_unlocked_banner")
+
             compose.onNodeWithTag("profile_settings_button", useUnmergedTree = true).performClick()
             waitFor("settings_general_item")
-            capture("18-settings-hub")
+            capture("19-settings-hub")
             compose.onNodeWithTag("settings_general_item", useUnmergedTree = true).performClick()
             waitForScreen("ОСНОВНАЯ ВАЛЮТА")
-            capture("19-settings-general")
+            capture("20-settings-general")
             compose.onNodeWithContentDescription("Назад").performClick()
             waitFor("settings_general_item")
             compose.onNodeWithContentDescription("Закрыть").performClick()
@@ -152,7 +157,7 @@ class UserJourneyVisualAuditTest {
             }
             waitFor("david_chat_screen")
             waitFor("david_text_input")
-            capture("20-david-chat")
+            capture("21-david-chat")
             compose.onNodeWithTag("david_text_input", useUnmergedTree = true)
                 .performTextInput("Сколько денег у меня осталось?")
             compose.onNodeWithTag("david_send_button", useUnmergedTree = true).performClick()
@@ -164,7 +169,7 @@ class UserJourneyVisualAuditTest {
             }
             compose.onNodeWithText("Расходы за период", substring = true).assertIsDisplayed()
             compose.onNodeWithText("1200 ₽", substring = true).assertIsDisplayed()
-            capture("21-david-read-only-financial-answer")
+            capture("22-david-read-only-financial-answer")
 
             compose.onNodeWithTag("david_chat_back_button", useUnmergedTree = true).performClick()
             waitForClosure("david_text_input")
