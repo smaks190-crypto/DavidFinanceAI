@@ -36,7 +36,7 @@ STEPS = {
     "15-goal-created": "Созданная цель",
     "16-annual-report": "Годовой отчёт",
     "17-return-to-dashboard": "Возврат на главную",
-    "18-achievement-banner": "Уведомление о достижении",
+    "18-after-goal-feedback": "Обратная связь после создания цели",
     "19-settings-hub": "Главный экран настроек",
     "20-settings-general": "Основные настройки",
     "21-david-chat": "Чат Давида",

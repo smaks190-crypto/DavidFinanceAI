@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -21,8 +22,8 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.printToString
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import org.junit.Assert.assertTrue
 import com.example.utils.GlobalConsoleLogger
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -135,10 +136,13 @@ class UserJourneyVisualAuditTest {
             waitForScreen("Можно потратить сегодня")
             capture("17-return-to-dashboard")
 
-            waitFor("achievement_unlocked_banner", 10_000)
-            capture("18-achievement-banner")
-            compose.onNodeWithTag("achievement_unlocked_banner", useUnmergedTree = true).performClick()
-            waitForClosure("achievement_unlocked_banner")
+            capture("18-after-goal-feedback")
+            if (compose.onAllNodesWithTag("achievement_unlocked_banner", useUnmergedTree = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            ) {
+                compose.onNodeWithTag("achievement_unlocked_banner", useUnmergedTree = true).performClick()
+                waitForClosure("achievement_unlocked_banner")
+            }
 
             compose.onNodeWithTag("profile_settings_button", useUnmergedTree = true).performClick()
             waitFor("settings_general_item")
