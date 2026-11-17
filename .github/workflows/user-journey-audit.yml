@@ -6,6 +6,7 @@ on:
       - 'app/**'
       - 'core/**'
       - 'ci/build_user_journey_report.py'
+      - 'ci/run_user_journey_audit.sh'
       - '.github/workflows/user-journey-audit.yml'
   push:
     branches: [main]
@@ -13,6 +14,7 @@ on:
       - 'app/**'
       - 'core/**'
       - 'ci/build_user_journey_report.py'
+      - 'ci/run_user_journey_audit.sh'
       - '.github/workflows/user-journey-audit.yml'
   workflow_dispatch:
     inputs:
@@ -65,26 +67,7 @@ jobs:
           ram-size: 2048M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: |
-            adb shell input keyevent 224
-            adb shell input keyevent 82
-            adb shell wm dismiss-keyguard
-            # Reset only the isolated CI emulator; never a physical device.
-            adb shell pm clear ru.personalbudget.app.aadece.preview || true
-            mkdir -p build/user-journey-raw
-            set +e
-            ./gradlew :app:connectedDebugAndroidTest --no-daemon \
-              -Dorg.gradle.jvmargs="-Xmx1536m -XX:MaxMetaspaceSize=512m -XX:+UseParallelGC" \
-              -Pandroid.testInstrumentationRunnerArguments.class=com.example.UserJourneyVisualAuditTest
-            status=$?
-            # Pull before the emulator-runner stops the Android VM.
-            adb pull /sdcard/Android/data/ru.personalbudget.app.aadece.preview/files/user-journey-audit/ \
-              build/user-journey-raw/ > build/user-journey-raw/adb-pull.log 2>&1 || true
-            if [ "$status" -ne 0 ]; then
-              adb logcat -d -b crash -t 250 > build/user-journey-raw/device-crash.log || true
-            fi
-            echo "instrumentation_exit_code=$status" > build/user-journey-raw/test-status.txt
-            exit "$status"
+          script: bash ci/run_user_journey_audit.sh
 
       - name: Build visual gallery and optional AI recommendations
         if: always()
