@@ -95,12 +95,12 @@ class UserJourneyVisualAuditTest {
         assertTrue("Could not create screenshot directory", dir.isDirectory || dir.mkdirs())
         val root = compose.onRoot(useUnmergedTree = true)
         val bitmap = root.captureToImage().asAndroidBitmap()
-        File(dir, "$" + "{name}.png").outputStream().use { output ->
+        File(dir, name + ".png").outputStream().use { output ->
             assertTrue("PNG screenshot failed", bitmap.compress(
                 android.graphics.Bitmap.CompressFormat.PNG, 100, output
             ))
         }
         // Semantics provides evidence for accessible names and actionable elements.
-        File(dir, "$" + "{name}.txt").writeText(root.printToString().take(150_000))
+        File(dir, name + ".txt").writeText(root.printToString().take(150_000))
     }
 }
