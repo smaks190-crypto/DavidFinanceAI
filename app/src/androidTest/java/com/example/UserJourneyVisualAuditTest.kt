@@ -6,6 +6,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -15,7 +17,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.printToString
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -73,12 +74,11 @@ class UserJourneyVisualAuditTest {
                         .assertTextEquals("Показано 1 из 1 операций")
                 }.isSuccess
             }
-            val historyTag = "transactions_lazy_list"
-            compose.onNodeWithTag(historyTag).performScrollToNode(hasText(description))
-            val expenseRow = hasAnyAncestor(hasTestTag(historyTag)) and
-                hasText(description) and hasText("-480 ₽")
-            compose.onNode(expenseRow).assertIsDisplayed()
-            compose.onNodeWithContentDescription("Закрыть").performClick()
+            val expenseRow = hasAnyAncestor(hasTestTag("transactions_lazy_list")) and
+                hasClickAction() and hasAnyDescendant(hasText(description)) and
+                hasAnyDescendant(hasText("-480 ₽"))
+            compose.onNode(expenseRow, useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithContentDescription("Закрыть", useUnmergedTree = true).performClick()
             waitForClosure("header_counter_text")
             compose.onNodeWithText("Можно потратить сегодня", useUnmergedTree = true).performScrollTo()
             capture("06-dashboard-after-expense")
