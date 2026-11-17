@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,6 +38,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -56,19 +56,24 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -92,6 +97,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -106,7 +113,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.davidapp.live.DavidSendButtonGestureHelper
 import com.example.davidapp.live.computeStreamingTextFadeSplitIndex
-import kotlin.math.roundToInt
 import com.example.ui.components.BrandFrogAvatar
 import com.example.ui.components.CategoryIconBadge
 import com.example.ui.components.MarkdownFormattedText
@@ -129,6 +135,7 @@ import com.example.ui.theme.SpaceGroteskFontFamily
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.withTimeoutOrNull
 
 // --- Obsidian Neo-Bank Design Tokens ---
@@ -163,9 +170,7 @@ val CyberpunkGradient = Brush.linearGradient(
 )
 
 /**
- * Верхняя панель чата Давида Жабова в обновлённой эстетике Obsidian Neo-Bank:
- * стеклянная шапка с тонким изумрудно-сапфировым бликом, живым ореолом вокруг аватара
- * и сбалансированными капсулами действий.
+ * Компактная шапка чата и меню действий Давида Жабова.
  */
 @Composable
 fun DavidChatTopBar(
@@ -177,259 +182,64 @@ fun DavidChatTopBar(
     isTyping: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "avatar_pulse")
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.22f,
-        targetValue = 0.58f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow_alpha"
-    )
+    var menuOpen by remember { mutableStateOf(false) }
 
-    val topBarBgBrush = remember {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color(0xFF0B1324).copy(alpha = 0.96f),
-                DarkBg.copy(alpha = 0.94f)
-            )
-        )
-    }
-    val bottomHairlineBrush = remember {
-        Brush.horizontalGradient(
-            colors = listOf(
-                Color.Transparent,
-                Emerald400.copy(alpha = 0.32f),
-                Indigo400.copy(alpha = 0.25f),
-                Color.Transparent
-            )
-        )
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(topBarBgBrush)
-            .drawBehind {
-                drawLine(
-                    brush = bottomHairlineBrush,
-                    start = Offset(0f, size.height),
-                    end = Offset(size.width, size.height),
-                    strokeWidth = 1.dp.toPx()
-                )
-            }
+    Row(
+        modifier = modifier.fillMaxWidth().background(DarkBg).padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-        ) {
-            if (onBack != null) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(ObsidianSurface.copy(alpha = 0.9f))
-                        .border(1.dp, GlassHighlight, CircleShape)
-                        .clickable(onClick = onBack)
-                        .testTag("david_chat_back_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Назад",
-                        tint = TextLight,
-                        modifier = Modifier.size(18.dp)
+        if (onBack != null) {
+            IconButton(onClick = onBack, modifier = Modifier.testTag("david_chat_back_button")) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = TextLight)
+            }
+        }
+        BrandFrogAvatar(size = 34.dp)
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Давид Жабов", color = TextLight, fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+            val status = when {
+                !hasApiKey -> "Gemini не подключён"
+                isTyping -> "Готовит ответ…"
+                else -> null
+            }
+            if (status != null) {
+                Text(status, color = Slate400, fontSize = 12.sp)
+            }
+        }
+        Box {
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(Icons.Default.MoreVert, contentDescription = "Действия чата", tint = TextLight)
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                if (onOpenAchievements != null) {
+                    DropdownMenuItem(
+                        text = { Text("Достижения") },
+                        onClick = {
+                            menuOpen = false
+                            onOpenAchievements()
+                        },
+                        modifier = Modifier.testTag("david_chat_achievements_button")
                     )
                 }
-                Spacer(modifier = Modifier.width(10.dp))
-            }
-
-            // Obsidian Avatar with Emerald-Cyan Halo
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.size(44.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    Emerald400.copy(alpha = glowAlpha),
-                                    Color(0xFF06B6D4).copy(alpha = glowAlpha * 0.45f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-                )
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF0B1426))
-                        .border(
-                            width = 1.4.dp,
-                            brush = Brush.linearGradient(
-                                listOf(
-                                    Emerald400.copy(alpha = 0.9f),
-                                    Color(0xFF22D3EE).copy(alpha = 0.65f),
-                                    Indigo500.copy(alpha = 0.55f)
-                                )
-                            ),
-                            shape = CircleShape
-                        )
-                ) {
-                    BrandFrogAvatar(size = 28.dp)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(10.5.dp)
-                        .clip(CircleShape)
-                        .background(if (hasApiKey) Emerald400 else Amber400)
-                        .border(1.8.dp, DarkBg, CircleShape)
-                        .align(Alignment.BottomEnd)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .then(
-                        if (onOpenApiKeyDialog != null) {
-                            Modifier.clickable { onOpenApiKeyDialog() }
-                        } else {
-                            Modifier
+                if (onOpenApiKeyDialog != null) {
+                    DropdownMenuItem(
+                        text = { Text("Настройки Gemini") },
+                        onClick = {
+                            menuOpen = false
+                            onOpenApiKeyDialog()
                         }
                     )
-                    .padding(vertical = 2.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Давид Жабов",
-                        color = TextLight,
-                        fontSize = 15.5.sp,
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                    Spacer(modifier = Modifier.width(7.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(7.dp))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(
-                                        Emerald400.copy(alpha = 0.18f),
-                                        Color(0xFF06B6D4).copy(alpha = 0.12f)
-                                    )
-                                )
-                            )
-                            .border(
-                                width = 0.7.dp,
-                                color = Emerald400.copy(alpha = 0.48f),
-                                shape = RoundedCornerShape(7.dp)
-                            )
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "AI Аудитор",
-                            color = Emerald400,
-                            fontSize = 9.sp,
-                            fontFamily = ManropeFontFamily,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
                 }
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(5.5.dp)
-                            .clip(CircleShape)
-                            .background(
-                                when {
-                                    isTyping -> Emerald400
-                                    hasApiKey -> Emerald400.copy(alpha = 0.75f)
-                                    else -> Amber400
-                                }
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = when {
-                            isTyping -> "анализирует бюджет..."
-                            hasApiKey -> "Gemini 3.8 • Готов к разбору трат"
-                            else -> "Офлайн-режим • Нажмите для ключа"
-                        },
-                        color = when {
-                            isTyping -> Emerald400
-                            hasApiKey -> Slate400
-                            else -> Amber400
-                        },
-                        fontSize = 11.sp,
-                        fontFamily = ManropeFontFamily,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            if (onOpenAchievements != null) {
-                val achievementsList by AchievementManager.achievementsFlow.collectAsState()
-                val unlockedCount = achievementsList.count { it.isUnlocked }
-
-                Box(
-                    modifier = Modifier
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(ObsidianSurface.copy(alpha = 0.9f))
-                        .border(1.dp, GlassHighlight, RoundedCornerShape(18.dp))
-                        .clickable(onClick = onOpenAchievements)
-                        .padding(horizontal = 11.dp)
-                        .testTag("david_chat_achievements_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(text = "🏆", fontSize = 13.5.sp)
-                        Text(
-                            text = unlockedCount.toString(),
-                            color = Amber400,
-                            fontSize = 12.sp,
-                            fontFamily = SpaceGroteskFontFamily,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(7.dp))
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(ObsidianSurface.copy(alpha = 0.9f))
-                    .border(1.dp, GlassHighlight, CircleShape)
-                    .clickable(onClick = onReset)
-                    .testTag("david_chat_reset_button"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Очистить чат",
-                    tint = Slate400,
-                    modifier = Modifier.size(16.5.dp)
+                DropdownMenuItem(
+                    text = { Text("Очистить чат") },
+                    onClick = {
+                        menuOpen = false
+                        onReset()
+                    },
+                    modifier = Modifier.testTag("david_chat_reset_button")
                 )
             }
         }
@@ -463,7 +273,8 @@ fun DavidMessageItem(
                     timestamp = message.timestamp,
                     isUser = message.isUser,
                     isLiveVoiceTurn = isLiveVoiceTurn,
-                    messageId = message.id
+                    messageId = message.id,
+                    timeline = true
                 )
             }
             is ChatMessageType.File -> {
@@ -989,7 +800,8 @@ fun DavidTextBubble(
     isUser: Boolean,
     isLiveVoiceTurn: Boolean = false,
     messageId: String = "",
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    timeline: Boolean = false
 ) {
     val useRichMarkdownBlock = !isUser &&
         !isLiveVoiceTurn &&
@@ -1123,6 +935,48 @@ fun DavidTextBubble(
                 pop()
             }
         }
+    }
+
+    if (timeline) {
+        Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier.size(24.dp).clip(CircleShape).background(ObsidianSurface),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isUser) {
+                    Icon(Icons.Default.Person, contentDescription = null, tint = Slate400, modifier = Modifier.size(15.dp))
+                } else {
+                    BrandFrogAvatar(size = 20.dp)
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        if (isUser) "Ты" else "Давид",
+                        color = if (isUser) TextLight else Emerald400,
+                        fontWeight = FontWeight.SemiBold, fontSize = 14.sp
+                    )
+                    Text(timestamp, color = Slate400, fontSize = 12.sp)
+                    if (isLiveVoiceTurn) {
+                        Icon(Icons.Default.Mic, contentDescription = "Из David Live", tint = Slate400, modifier = Modifier.size(13.dp))
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                if (useRichMarkdownBlock) {
+                    MarkdownFormattedText(markdownText = content, fontSize = 15.sp)
+                } else {
+                    Text(styledContent, color = TextLight, fontSize = 15.sp, lineHeight = 22.sp)
+                }
+                HorizontalDivider(Modifier.padding(top = 12.dp), color = GlassBorder)
+            }
+        }
+        return
     }
 
     val bubbleAlpha = entryProgress.value
@@ -2004,7 +1858,7 @@ fun DavidChatInputBar(
             ) {
                 if (text.isEmpty()) {
                     Text(
-                        text = "Спросите Давида или введите: Кофе 300...",
+                        text = "Спросить Давида",
                         color = Slate400,
                         fontSize = 13.sp,
                         fontFamily = ManropeFontFamily,
@@ -2083,7 +1937,7 @@ fun DavidChatInputBar(
                             val upBeforeTimeout = withTimeoutOrNull(
                                 DavidSendButtonGestureHelper.LONG_PRESS_DURATION_MS
                             ) {
-                                waitForUpOrCancellation()
+                                waitForUpOrCancellation() != null
                             }
 
                             if (upBeforeTimeout == null) {
@@ -2100,7 +1954,7 @@ fun DavidChatInputBar(
                                 currentOnStartLive?.invoke()
                                 // Дожидаемся отпускания пальца и блокируем случайную отправку сообщения
                                 waitForUpOrCancellation()
-                            } else if (!longPressTriggered) {
+                            } else if (upBeforeTimeout && !longPressTriggered) {
                                 // Короткое нажатие (< 550 мс): отправляем сообщение, только если жест не отменён и текст не пуст
                                 val evaluation = DavidSendButtonGestureHelper.evaluatePress(
                                     pressDurationMs = 120L,
@@ -2113,27 +1967,23 @@ fun DavidChatInputBar(
                             }
                         }
                     }
+                    .semantics {
+                        if (isEnabled) {
+                            onClick {
+                                currentOnSend()
+                                true
+                            }
+                        }
+                    }
                     .testTag("david_send_button")
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Отправить (удерживайте для David Live)",
+                    contentDescription = "Отправить",
                     tint = if (isEnabled) DarkBg else Emerald400,
                     modifier = Modifier.size(18.dp)
                 )
             }
-        }
-
-        if (onStartDavidLive != null) {
-            Text(
-                text = "Удерживайте отправку ~0.5 сек для голосового диалога David Live",
-                color = Slate400.copy(alpha = 0.72f),
-                fontSize = 10.sp,
-                fontFamily = ManropeFontFamily,
-                modifier = Modifier
-                    .padding(top = 3.dp, end = 10.dp)
-                    .testTag("david_live_long_press_hint")
-            )
         }
     }
 }

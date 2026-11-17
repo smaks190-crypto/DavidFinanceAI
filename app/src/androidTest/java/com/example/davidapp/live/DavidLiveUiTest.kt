@@ -45,9 +45,6 @@ class DavidLiveUiTest {
             )
         }
 
-        // Проверяем наличие ненавязчивой подсказки о долгом нажатии
-        composeTestRule.onNodeWithTag("david_live_long_press_hint").assertIsDisplayed()
-
         // Долгое нажатие (~600 мс) на кнопку отправки запускает David Live,
         // НЕ отправляет сообщение и НЕ стирает уже набранный текст
         composeTestRule.onNodeWithTag("david_send_button").performTouchInput {
