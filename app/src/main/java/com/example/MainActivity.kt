@@ -695,6 +695,7 @@ fun MainAppScreen(viewModel: BudgetViewModel) {
                             isVoiceOverlayActive = active
                         },
                         isDavidLiveActive = liveDisplayMode != com.example.davidapp.live.DavidLiveDisplayMode.HIDDEN,
+                        isDavidLiveExpanded = liveDisplayMode == com.example.davidapp.live.DavidLiveDisplayMode.EXPANDED,
                         davidLiveMinimizedCapsule = if (liveDisplayMode != com.example.davidapp.live.DavidLiveDisplayMode.HIDDEN) {
                             {
                                 com.example.davidapp.live.DavidLiveMinimizedCapsule(

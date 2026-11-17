@@ -448,10 +448,12 @@ fun DavidChatScreen(
 
         // Полноценный режим живого голосового диалога David Live внутри окна чата Давида
         if (showStandaloneLiveOverlay && liveDisplayMode != DavidLiveDisplayMode.HIDDEN) {
+            val liveTranscriptTurns by viewModel.liveTranscriptTurns.collectAsState()
             DavidLiveSheet(
                 connectionState = liveConnectionState,
                 liveSubtitle = liveSubtitle,
                 subtitleSpeaker = liveSubtitleSpeaker,
+                transcriptTurns = liveTranscriptTurns,
                 rayMagnitudes = liveRayMagnitudes,
                 overallEnergy = liveOverallEnergy,
                 activeSpeaker = liveActiveSpeaker,

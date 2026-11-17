@@ -72,7 +72,7 @@ class DavidLiveUiTest {
         composeTestRule.setContent {
             DavidLiveSheet(
                 connectionState = DavidLiveConnectionState.LISTENING,
-                liveSubtitle = "Говорите, я слушаю...",
+                liveSubtitle = "Сколько осталось на неделю?",
                 rayMagnitudes = List(DavidLiveSpectrumAnalyzer.RAY_COUNT) { 0.35f },
                 overallEnergy = 0.42f,
                 activeSpeaker = DavidLiveSpeaker.USER,
@@ -85,8 +85,8 @@ class DavidLiveUiTest {
             )
         }
 
-        composeTestRule.onNodeWithText("Давид Жабов").assertIsDisplayed()
-        composeTestRule.onNodeWithText("AI-помощник по финансам").assertIsDisplayed()
+        composeTestRule.onNodeWithText("David Live").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("david_live_header_avatar").assertIsDisplayed()
         composeTestRule.onNodeWithTag("david_live_subtitle_bubble").assertIsDisplayed()
         composeTestRule.onNodeWithTag("david_live_circular_visualizer").assertIsDisplayed()
 
@@ -95,7 +95,7 @@ class DavidLiveUiTest {
         composeTestRule.waitForIdle()
         assertTrue(micMuted)
 
-        // Завершение сессии по кнопке «Отменить»
+        // Завершение сессии по кнопке «Завершить»
         composeTestRule.onNodeWithTag("david_live_cancel_button").performClick()
         composeTestRule.waitForIdle()
         assertTrue(sessionEnded)
@@ -262,7 +262,7 @@ class DavidLiveUiTest {
         composeTestRule.waitForIdle()
         assertEquals(DavidLiveDisplayMode.EXPANDED, displayMode)
 
-        // 3. Кнопка иконки чата (david_live_chat_minimize_button) сворачивает режим внутрь открытого чата
+        // 3. Кнопка «Свернуть» (david_live_chat_minimize_button) сворачивает режим внутрь открытого чата
         composeTestRule.onNodeWithTag("david_live_chat_minimize_button").performClick()
         composeTestRule.waitForIdle()
         assertEquals(1, minimizedToBottomBarCount)
@@ -376,7 +376,7 @@ class DavidLiveUiTest {
         composeTestRule.onNodeWithTag("david_live_bottom_mute_button").performClick()
         composeTestRule.waitForIdle()
         assertTrue(isMuted)
-        composeTestRule.onNodeWithTag("david_live_sphere_status_caption").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Микрофон выключен").assertIsDisplayed()
 
         // 3. При переходе в OFFLINE или API_MISSING при выключенном микрофоне системный статус сохраняет приоритет
         currentVisualState = DavidLiveVisualState.OFFLINE
@@ -385,7 +385,7 @@ class DavidLiveUiTest {
 
         currentVisualState = DavidLiveVisualState.API_MISSING
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Добавить API").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("david_live_contextual_action_button").assertIsDisplayed()
     }
 
     @Test
@@ -422,7 +422,7 @@ class DavidLiveUiTest {
         // Когда Давид договаривает фразу и переходит в режим ожидания, завершённая фраза уходит вверх, оставляя чистый статус
         currentVisualState = DavidLiveVisualState.IDLE_LISTENING
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Слушаю вас").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Слушаю тебя...").assertIsDisplayed()
 
         // Когда начинается новая реплика, она появляется как свежее сообщение без склейки со старой
         currentVisualState = DavidLiveVisualState.DAVID_SPEAKING
