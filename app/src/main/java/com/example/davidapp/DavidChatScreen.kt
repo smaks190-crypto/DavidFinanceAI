@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -228,6 +229,7 @@ fun DavidChatScreen(
         modifier = modifier
             .fillMaxSize()
             .background(ambientStageBrush)
+            .testTag("david_chat_screen")
     ) {
         Scaffold(
             modifier = Modifier

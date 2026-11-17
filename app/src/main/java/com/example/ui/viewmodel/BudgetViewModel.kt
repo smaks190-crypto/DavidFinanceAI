@@ -60,14 +60,10 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     val recurringPayments: StateFlow<List<RecurringPaymentEntity>>
     val recurringExecutionLogs: StateFlow<List<RecurringExecutionLogEntity>>
 
-    private val _userSafetyFloorRub = MutableStateFlow(
-        com.example.data.preferences.BudgetPreferencesRepository.getUserSafetyFloorRub(application)
-    )
+    private val _userSafetyFloorRub = MutableStateFlow(0.0)
     val userSafetyFloorRub: StateFlow<Double> = _userSafetyFloorRub.asStateFlow()
 
-    private val _userEssentialDailyNormRub = MutableStateFlow<Double?>(
-        com.example.data.preferences.BudgetPreferencesRepository.getUserEssentialDailyNormRub(application)
-    )
+    private val _userEssentialDailyNormRub = MutableStateFlow<Double?>(null)
     val userEssentialDailyNormRub: StateFlow<Double?> = _userEssentialDailyNormRub.asStateFlow()
 
     private val _periodType = MutableStateFlow(PeriodType.MONTH)
@@ -433,6 +429,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                 else profilesList.firstOrNull()?.id
             } else null
 
+            loadProfileFinancialPreferences(targetId)
             _selectedBudgetId.value = targetId
         }
     }
@@ -489,6 +486,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                 securityManager.removePin()
                 com.example.davidapp.AchievementManager.resetAll(getApplication())
                 com.example.data.preferences.BudgetPreferencesRepository.resetBudgetSelectionOnClear(getApplication())
+                loadProfileFinancialPreferences(null)
                 _selectedBudgetId.value = null
                 repository.ensureDefaultProfileExists()
                 _toastMessage.emit("Защита сброшена, данные операций удалены!")
@@ -509,7 +507,14 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         if (id != null) {
             com.example.data.preferences.BudgetPreferencesRepository.setSelectedBudget(getApplication(), id)
         }
+        loadProfileFinancialPreferences(id)
         _selectedBudgetId.value = id
+    }
+
+    private fun loadProfileFinancialPreferences(budgetId: String?) {
+        val preferences = com.example.data.preferences.BudgetPreferencesRepository
+        _userSafetyFloorRub.value = preferences.getUserSafetyFloorRub(getApplication(), budgetId)
+        _userEssentialDailyNormRub.value = preferences.getUserEssentialDailyNormRub(getApplication(), budgetId)
     }
 
     fun createNewBudget(name: String) {

@@ -119,14 +119,23 @@ object BudgetPreferencesRepository {
         if (!budgetId.isNullOrBlank() && prefs.contains("safety_floor_rub_$budgetId")) {
             return prefs.getFloat("safety_floor_rub_$budgetId", 0f).toDouble()
         }
-        return prefs.getFloat("user_safety_floor_rub", 0f).toDouble()
+        // The pre-profile key belongs to the original default profile. Do not let
+        // newly created profiles inherit its reserve silently.
+        return if (budgetId.isNullOrBlank() || budgetId == "default") {
+            prefs.getFloat("user_safety_floor_rub", 0f).toDouble()
+        } else {
+            0.0
+        }
     }
 
     fun setUserSafetyFloorRub(context: Context, amountRub: Double, budgetId: String? = null) {
         val clean = amountRub.coerceAtLeast(0.0).toFloat()
-        val editor = budgetPrefs(context).edit().putFloat("user_safety_floor_rub", clean)
+        val editor = budgetPrefs(context).edit()
         if (!budgetId.isNullOrBlank()) {
             editor.putFloat("safety_floor_rub_$budgetId", clean)
+            if (budgetId == "default") editor.putFloat("user_safety_floor_rub", clean)
+        } else {
+            editor.putFloat("user_safety_floor_rub", clean)
         }
         editor.apply()
     }
@@ -137,27 +146,35 @@ object BudgetPreferencesRepository {
             val v = prefs.getFloat("essential_daily_norm_rub_$budgetId", -1f)
             if (v > 0f) return v.toDouble()
         }
-        return if (prefs.contains("user_essential_daily_norm_rub")) {
+        // Keep the legacy value for the original default profile, but a new
+        // profile with no explicit norm must use the estimator's own fallback.
+        return if ((budgetId.isNullOrBlank() || budgetId == "default") &&
+            prefs.contains("user_essential_daily_norm_rub")
+        ) {
             prefs.getFloat("user_essential_daily_norm_rub", 500f).toDouble().takeIf { it > 0.0 }
-        } else {
-            null
-        }
+        } else null
     }
 
     fun setUserEssentialDailyNormRub(context: Context, amountRub: Double?, budgetId: String? = null) {
         val editor = budgetPrefs(context).edit()
         if (amountRub == null || amountRub <= 0.0) {
-            editor.remove("user_essential_daily_norm_rub")
             if (!budgetId.isNullOrBlank()) {
                 editor.remove("essential_daily_norm_rub_$budgetId")
+                if (budgetId == "default") editor.remove("user_essential_daily_norm_rub")
+            } else {
+                editor.remove("user_essential_daily_norm_rub")
             }
         } else {
             val clean = amountRub.toFloat()
-            editor.putFloat("user_safety_daily_norm_last", clean)
-            editor.putFloat("user_essential_daily_norm_rub", clean)
             if (!budgetId.isNullOrBlank()) {
                 editor.putFloat("essential_daily_norm_rub_$budgetId", clean)
+                if (budgetId == "default") {
+                    editor.putFloat("user_essential_daily_norm_rub", clean)
+                }
+            } else {
+                editor.putFloat("user_essential_daily_norm_rub", clean)
             }
+            editor.putFloat("user_safety_daily_norm_last", clean)
         }
         editor.apply()
     }
@@ -167,7 +184,11 @@ object BudgetPreferencesRepository {
         if (!budgetId.isNullOrBlank() && prefs.contains("locked_reserve_rub_$budgetId")) {
             return prefs.getFloat("locked_reserve_rub_$budgetId", 0f).toDouble()
         }
-        return prefs.getFloat("user_locked_reserve_rub", 0f).toDouble()
+        return if (budgetId.isNullOrBlank() || budgetId == "default") {
+            prefs.getFloat("user_locked_reserve_rub", 0f).toDouble()
+        } else {
+            0.0
+        }
     }
 }
 

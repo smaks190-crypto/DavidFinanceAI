@@ -5,6 +5,7 @@ import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.printToString
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -134,7 +136,9 @@ class UserJourneyVisualAuditTest {
             waitForScreen("Можно потратить сегодня")
             capture("17-return-to-dashboard")
 
-            compose.onNodeWithTag("david_chat_open_button", useUnmergedTree = true).performClick()
+            compose.onNodeWithTag("david_chat_open_button", useUnmergedTree = true)
+                .performTouchInput { click() }
+            waitFor("david_chat_screen")
             waitFor("david_text_input")
             capture("18-david-chat")
             compose.onNodeWithTag("david_text_input", useUnmergedTree = true)

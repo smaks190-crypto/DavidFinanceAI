@@ -1126,6 +1126,7 @@ class SafeToSpendCalculatorTest {
 
         assertTrue(snapshot.safeToSpendResult.requiresEssentialBudgetPrompt)
         assertTrue(snapshot.safeToSpendResult.hasCashGap)
+        assertEquals(15_000.0, snapshot.safeToSpendResult.cashGapAmountRub, 0.01)
 
         val ui = buildFinancialStateUiModel(snapshot.semantics, snapshot.safeToSpendResult)
         assertTrue(ui.deficitWarningTitle.orEmpty().startsWith("Предварительный риск"))
