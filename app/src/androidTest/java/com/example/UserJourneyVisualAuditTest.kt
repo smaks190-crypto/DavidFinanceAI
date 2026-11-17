@@ -163,7 +163,7 @@ class UserJourneyVisualAuditTest {
             waitFor("david_text_input")
             capture("21-david-chat")
             compose.onNodeWithTag("david_text_input", useUnmergedTree = true)
-                .performTextInput("Сколько денег у меня осталось?")
+                .performTextInput("Покажи мой баланс, расходы и долги.")
             compose.onNodeWithTag("david_send_button", useUnmergedTree = true).performClick()
             compose.waitUntil(20_000) {
                 runCatching {
