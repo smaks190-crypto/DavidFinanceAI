@@ -50,8 +50,8 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Compile application and instrumentation test
-        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+      - name: Run unit tests and compile application and instrumentation test
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
 
       - name: Free Gradle daemon memory before launching emulator
         run: ./gradlew --stop
