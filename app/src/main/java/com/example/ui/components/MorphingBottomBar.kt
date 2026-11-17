@@ -424,8 +424,8 @@ fun MorphingBottomBar(
 
     // Неоновое переливающееся свечение рамки: фаза читается строго в фазе отрисовки (drawWithContent),
     // чтобы покадровое изменение градиента не вызывало рекомпозиций дочерних вкладок и текста.
-    val needsAnimatedNeonBorder =
-        activeModal != BottomCapsuleModal.None && activeModal !is BottomCapsuleModal.VoiceInput && !useFlatLiveSurface
+    val needsAnimatedNeonBorder = activeModal != BottomCapsuleModal.None &&
+        activeModal !is BottomCapsuleModal.VoiceInput && activeModal !is BottomCapsuleModal.DavidChat
     val glowPhaseState = if (needsAnimatedNeonBorder) {
         val glowTransition = rememberInfiniteTransition(label = "capsule_neon_glow")
         glowTransition.animateFloat(
@@ -547,7 +547,7 @@ fun MorphingBottomBar(
                 )
                 .drawWithContent {
                     drawContent()
-                    if (useFlatLiveSurface) return@drawWithContent
+                    if (activeModal is BottomCapsuleModal.DavidChat) return@drawWithContent
                     val strokeWidthPx = borderWidth.toPx()
                     val halfStroke = strokeWidthPx / 2f
                     val cornerPx = (cornerRadius.toPx() - halfStroke).coerceAtLeast(0f)

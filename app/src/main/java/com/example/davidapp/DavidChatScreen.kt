@@ -11,9 +11,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,13 +25,20 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -44,13 +53,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -98,6 +111,14 @@ fun DavidChatScreen(
     var isSelectingPeriod by remember { mutableStateOf(false) }
 
     val messages by viewModel.messages.collectAsState()
+    val latestSummary = remember(messages) {
+        messages.lastOrNull { it.type is ChatMessageType.LiveSessionSummary }
+    }
+    val timelineMessages = remember(messages, latestSummary?.id) {
+        messages.filterNot { it.id == latestSummary?.id }
+    }
+    var openSummaryId by remember { mutableStateOf<String?>(null) }
+
     val stage by viewModel.stage.collectAsState()
     val isTyping by viewModel.isDavidTyping.collectAsState()
     val hasApiKey by viewModel.hasApiKey.collectAsState()
@@ -174,19 +195,18 @@ fun DavidChatScreen(
         }
     }
 
-    val lastMessageId = messages.lastOrNull()?.id
-    val lastMessageTextContent = (messages.lastOrNull()?.type as? ChatMessageType.Text)?.content
+    val lastMessageId = timelineMessages.lastOrNull()?.id
+    val lastMessageTextContent = (timelineMessages.lastOrNull()?.type as? ChatMessageType.Text)?.content
     var lastScrolledMsgCount by remember { mutableStateOf(0) }
     var lastScrolledMsgId by remember { mutableStateOf<String?>(null) }
     var lastScrolledTyping by remember { mutableStateOf(false) }
 
-    LaunchedEffect(messages.size, lastMessageId, lastMessageTextContent, isTyping, stage) {
-        if (messages.isNotEmpty()) {
-            val totalItems = messages.size + if (isTyping) 1 else 0
-            val isSameStreamingItem = messages.size == lastScrolledMsgCount &&
+    LaunchedEffect(timelineMessages.size, lastMessageId, lastMessageTextContent, isTyping, stage) {
+        if (timelineMessages.isNotEmpty()) {
+            val isSameStreamingItem = timelineMessages.size == lastScrolledMsgCount &&
                 lastMessageId == lastScrolledMsgId &&
                 isTyping == lastScrolledTyping
-            lastScrolledMsgCount = messages.size
+            lastScrolledMsgCount = timelineMessages.size
             lastScrolledMsgId = lastMessageId
             lastScrolledTyping = isTyping
 
@@ -236,18 +256,46 @@ fun DavidChatScreen(
             containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
-                DavidChatTopBar(
-                    onBack = onBack,
-                    onReset = {
-                        isSelectingPeriod = false
-                        viewModel.resetSession(effectiveSoundManager)
-                    },
-                    onOpenAchievements = { showAchievementsDialog = true },
-                    hasApiKey = hasApiKey,
-                    onOpenApiKeyDialog = { showApiKeyDialog = true },
-                    isTyping = isTyping,
-                    modifier = if (isEmbeddedInCapsule) Modifier else Modifier.statusBarsPadding()
-                )
+                Column {
+                    DavidChatTopBar(
+                        onBack = onBack,
+                        onReset = {
+                            isSelectingPeriod = false
+                            viewModel.resetSession(effectiveSoundManager)
+                        },
+                        onOpenAchievements = { showAchievementsDialog = true },
+                        hasApiKey = hasApiKey,
+                        onOpenApiKeyDialog = { showApiKeyDialog = true },
+                        isTyping = isTyping,
+                        modifier = if (isEmbeddedInCapsule) Modifier else Modifier.statusBarsPadding()
+                    )
+                    latestSummary?.let { message ->
+                        val summary = message.type as ChatMessageType.LiveSessionSummary
+                        val preview = when {
+                            summary.isGenerating -> "Давид готовит сводку…"
+                            summary.errorMessage != null -> "Не удалось подготовить сводку"
+                            else -> summary.summary?.keyFindings?.firstOrNull() ?: "Открыть сводку"
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 4.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Emerald400.copy(alpha = 0.09f))
+                                .clickable { openSummaryId = message.id }
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .testTag("david_chat_latest_summary"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Default.Mic, contentDescription = null, tint = Emerald400)
+                            Column(Modifier.weight(1f)) {
+                                Text("Итоги Live", color = Emerald400, fontWeight = FontWeight.SemiBold)
+                                Text(preview, color = Slate400, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
+                        }
+                    }
+                }
             },
             bottomBar = {
                 Column(
@@ -286,53 +334,72 @@ fun DavidChatScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                    DavidSmartActionStrip(
-                        stage = stage,
-                        hasApiKey = hasApiKey,
-                        isSelectingPeriod = isSelectingPeriod,
-                        onTogglePeriodSelector = { open ->
-                            isSelectingPeriod = open
-                            if (!open && stage == DavidStage.FILE_SELECTION) {
-                                viewModel.cancelPeriodSelection()
-                            }
-                        },
-                        onPeriodSelect = { period ->
-                            isSelectingPeriod = false
-                            viewModel.processFile(period, effectiveSoundManager)
-                        },
-                        onSendPrompt = { prompt ->
-                            isSelectingPeriod = false
-                            viewModel.sendTextMessage(prompt, effectiveSoundManager)
-                        },
-                        onActionClick = { action ->
-                            isSelectingPeriod = false
-                            viewModel.handleAction(action, effectiveSoundManager)
-                        },
-                        onExportPdf = {
-                            isSelectingPeriod = false
-                            viewModel.exportPdf(effectiveSoundManager)
-                        },
-                        onOpenApiKeyDialog = { showApiKeyDialog = true }
-                    )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (!isSelectingPeriod && stage != DavidStage.FILE_SELECTION) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                isSelectingPeriod = false
+                                                triggerDavidLiveWithPermissionCheck()
+                                            },
+                                            modifier = Modifier.testTag("david_chat_start_live")
+                                        ) {
+                                            Icon(Icons.Default.Mic, contentDescription = null, tint = Emerald400)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Начать Live", color = Emerald400)
+                                        }
+                                    }
+                                    DavidSmartActionStrip(
+                                        stage = stage,
+                                        hasApiKey = hasApiKey,
+                                        isSelectingPeriod = isSelectingPeriod,
+                                        onTogglePeriodSelector = { open ->
+                                            isSelectingPeriod = open
+                                            if (!open && stage == DavidStage.FILE_SELECTION) {
+                                                viewModel.cancelPeriodSelection()
+                                            }
+                                        },
+                                        onPeriodSelect = { period ->
+                                            isSelectingPeriod = false
+                                            viewModel.processFile(period, effectiveSoundManager)
+                                        },
+                                        onSendPrompt = { prompt ->
+                                            isSelectingPeriod = false
+                                            viewModel.sendTextMessage(prompt, effectiveSoundManager)
+                                        },
+                                        onActionClick = { action ->
+                                            isSelectingPeriod = false
+                                            viewModel.handleAction(action, effectiveSoundManager)
+                                        },
+                                        onExportPdf = {
+                                            isSelectingPeriod = false
+                                            viewModel.exportPdf(effectiveSoundManager)
+                                        },
+                                        onOpenApiKeyDialog = { showApiKeyDialog = true },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
 
-                    // Капсула ввода текста в стиле Obsidian Neo-Bank (долгое нажатие ~550 мс -> David Live)
-                    DavidChatInputBar(
-                        text = inputText,
-                        onTextChange = { viewModel.updateChatDraftText(it) },
-                        onSend = {
-                            if (inputText.isNotBlank()) {
-                                val textToSend = inputText
-                                viewModel.updateChatDraftText("")
-                                isSelectingPeriod = false
-                                viewModel.sendTextMessage(textToSend, effectiveSoundManager)
-                            }
-                        },
-                        onStartDavidLive = {
-                            // Важно: не очищаем и не отправляем inputText при запуске David Live
-                            isSelectingPeriod = false
-                            triggerDavidLiveWithPermissionCheck()
-                        }
-                    )
+                                // Капсула ввода текста в стиле Obsidian Neo-Bank (долгое нажатие ~550 мс -> David Live)
+                                DavidChatInputBar(
+                                    text = inputText,
+                                    onTextChange = { viewModel.updateChatDraftText(it) },
+                                    onSend = {
+                                        if (inputText.isNotBlank()) {
+                                            val textToSend = inputText
+                                            viewModel.updateChatDraftText("")
+                                            isSelectingPeriod = false
+                                            viewModel.sendTextMessage(textToSend, effectiveSoundManager)
+                                        }
+                                    },
+                                    onStartDavidLive = {
+                                        // Важно: не очищаем и не отправляем inputText при запуске David Live
+                                        isSelectingPeriod = false
+                                        triggerDavidLiveWithPermissionCheck()
+                                    }
+                                )
                             }
                         }
                     }
@@ -350,7 +417,7 @@ fun DavidChatScreen(
                 }
 
                 items(
-                    items = messages,
+                    items = timelineMessages,
                     key = { it.id }
                 ) { message ->
                     DavidMessageItem(
@@ -413,6 +480,27 @@ fun DavidChatScreen(
                 debugOverrideVisualState = liveDebugOverrideVisualState,
                 onSelectDebugVisualState = { viewModel.setDebugLiveVisualStateOverride(it) },
                                     visualPhase = liveVisualPhase
+            )
+        }
+    }
+
+    messages.firstOrNull { it.id == openSummaryId }?.let { message ->
+        val summary = message.type as? ChatMessageType.LiveSessionSummary
+        if (summary != null) {
+            AlertDialog(
+                onDismissRequest = { openSummaryId = null },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        DavidLiveSummaryBubble(
+                            summaryState = summary,
+                            timestamp = message.timestamp,
+                            onRetry = { viewModel.retryLiveSummary(message.id, effectiveSoundManager) }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { openSummaryId = null }) { Text("Закрыть") }
+                }
             )
         }
     }
