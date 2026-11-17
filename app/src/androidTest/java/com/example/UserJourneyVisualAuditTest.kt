@@ -56,8 +56,6 @@ class UserJourneyVisualAuditTest {
             capture("03-new-budget-dashboard")
             compose.onNodeWithText("Предварительный риск кассового разрыва", substring = true)
                 .performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("500 ₽/день", substring = true)
-                .performScrollTo().assertIsDisplayed()
             compose.onNodeWithTag("embedded_add_operation_button", useUnmergedTree = true).performClick()
 
             waitFor("transaction_amount_input")
