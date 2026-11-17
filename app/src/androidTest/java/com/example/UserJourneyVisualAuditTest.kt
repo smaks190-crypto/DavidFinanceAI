@@ -113,7 +113,12 @@ class UserJourneyVisualAuditTest {
             capture("13-add-goal-filled")
             compose.onNodeWithTag("save_goal_button", useUnmergedTree = true).performClick()
             waitForClosure("save_goal_button")
-            compose.onNodeWithText("Новый ноутбук", useUnmergedTree = true).assertIsDisplayed()
+            compose.waitUntil(15_000) {
+                compose.onAllNodes(hasText("Новый ноутбук"), useUnmergedTree = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("Новый ноутбук", useUnmergedTree = true)
+                .performScrollTo().assertIsDisplayed()
             capture("14-goal-created")
 
             waitFor("tab_annual")
