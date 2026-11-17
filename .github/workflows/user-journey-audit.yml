@@ -64,7 +64,7 @@ jobs:
             adb shell input keyevent 82
             adb shell wm dismiss-keyguard
             # Reset only the isolated CI emulator; never a physical device.
-            adb shell pm clear ru.personalbudget.app.aadece.preview
+            adb shell pm clear ru.personalbudget.app.aadece.preview || true
             mkdir -p build/user-journey-raw
             set +e
             ./gradlew :app:connectedDebugAndroidTest --no-daemon \
