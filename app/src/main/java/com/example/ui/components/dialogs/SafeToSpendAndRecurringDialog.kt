@@ -105,8 +105,13 @@ fun buildFinancialStateUiModel(
 
     val (warningTitle, warningSubtitle) = when {
         result.hasCashGap -> {
-            "Риск кассового разрыва: −${formatFullCurrency(result.cashGapAmountRub)}" to
-                "Доступных средств и гарантированных доходов не хватает на обязательные платежи и базовые расходы."
+            if (result.requiresEssentialBudgetPrompt) {
+                "Предварительный риск кассового разрыва: −${formatFullCurrency(result.cashGapAmountRub)}" to
+                    "Нет истории базовых расходов: расчёт использует ориентир ${result.dailyEssentialRateRub.toInt()} ₽/день. Уточните норму — это оценка, а не долг."
+            } else {
+                "Риск кассового разрыва: −${formatFullCurrency(result.cashGapAmountRub)}" to
+                    "Доступных средств и гарантированных доходов не хватает на обязательные платежи и базовые расходы."
+            }
         }
         hasExplicitDeficitWarning -> {
             "Дефицит после резервирования: −${formatFullCurrency(freeMoneyDeficitRub)}" to
@@ -116,6 +121,8 @@ fun buildFinancialStateUiModel(
     }
 
     val canSpendSubtitle = when {
+        result.hasCashGap && result.requiresEssentialBudgetPrompt ->
+            "Предварительная оценка • ${result.dailyEssentialRateRub.toInt()} ₽/день, уточните норму"
         result.hasCashGap -> "Внимание: дефицит средств на обязательные платежи"
         !result.isReserveRequirementMet -> "Защитный резерв не покрыт • дефицит ${formatShortCurrency(result.reserveDeficitRub)}"
         result.todayOverspendRub > 0.0 -> "Дневной лимит превышен на ${formatFullCurrency(result.todayOverspendRub)}"
@@ -804,7 +811,12 @@ private fun SafeToSpendOverviewSheetContent(
                     Text(
                         text = if (result.hasCashGap) {
                             val gapDateText = result.cashGapEpochDay?.let { formatRussianShortDate(it) } ?: "в горизонте"
-                            "Кассовый разрыв ($gapDateText): −${formatFullCurrency(result.cashGapAmountRub)}"
+                            val label = if (result.requiresEssentialBudgetPrompt) {
+                                "Предварительная оценка разрыва"
+                            } else {
+                                "Кассовый разрыв ($gapDateText)"
+                            }
+                            "$label: −${formatFullCurrency(result.cashGapAmountRub)}"
                         } else {
                             "Дефицит защитного резерва: −${formatFullCurrency(result.reserveDeficitRub)}"
                         },
@@ -814,7 +826,9 @@ private fun SafeToSpendOverviewSheetContent(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = if (result.hasCashGap) {
+                        text = if (result.hasCashGap && result.requiresEssentialBudgetPrompt) {
+                            "Предварительная оценка использует ориентир ${result.dailyEssentialRateRub.toInt()} ₽/день при отсутствии истории трат. Это не записанный долг или подтверждённый платёж. Укажите дневную норму базовых расходов, чтобы пересчитать прогноз."
+                        } else if (result.hasCashGap) {
                             "Чтобы избежать нехватки денег на обязательные счета, сократите необязательные расходы или проверьте расписание платежей."
                         } else {
                             "Свободных средств после вычета предстоящих платежей и базовых расходов меньше установленного защитного резерва."

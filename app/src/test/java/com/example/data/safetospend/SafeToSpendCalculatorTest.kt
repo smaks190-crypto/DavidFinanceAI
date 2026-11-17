@@ -1113,6 +1113,28 @@ class SafeToSpendCalculatorTest {
     }
 
     @Test
+    fun coldStartCashGapIsClearlyMarkedAsAnEstimate() {
+        val snapshot = DavidFinancialIntelligenceProvider.computeSnapshot(
+            transactions = emptyList(),
+            accounts = emptyList(),
+            goals = emptyList(),
+            categories = emptyList(),
+            recurringPayments = emptyList(),
+            executionLogs = emptyList(),
+            todayEpochDay = baseDay
+        )
+
+        assertTrue(snapshot.safeToSpendResult.requiresEssentialBudgetPrompt)
+        assertTrue(snapshot.safeToSpendResult.hasCashGap)
+
+        val ui = buildFinancialStateUiModel(snapshot.semantics, snapshot.safeToSpendResult)
+        assertTrue(ui.deficitWarningTitle.orEmpty().startsWith("Предварительный риск"))
+        assertTrue(ui.deficitWarningSubtitle.orEmpty().contains("500 ₽/день"))
+        assertTrue(ui.deficitWarningSubtitle.orEmpty().contains("не долг"))
+        assertTrue(ui.canSpendTodaySubtitle.contains("Предварительная оценка"))
+    }
+
+    @Test
     fun test_issue64_breakdownAndVerdictLocalization_containsZeroTechnicalTokens() {
         val input = SafeToSpendInput(
             todayEpochDay = baseDay,

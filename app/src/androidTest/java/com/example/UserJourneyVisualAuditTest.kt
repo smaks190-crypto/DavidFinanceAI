@@ -29,16 +29,17 @@ import java.io.File
 
 /**
  * Сквозной визуальный сценарий на ЧИСТОМ эмуляторе:
- * создание профиля -> главная -> расход -> долги -> цели -> годовой отчет.
+ * чистый профиль -> расход и история -> долг -> цель -> отчет -> Давид -> настройки.
  *
- * Только тестовые данные. Не проверяет реальные банковские счета, API или голосовую связь.
+ * Только тестовые данные. Запрос Давиду проверяет локальный режим без Gemini API.
+ * Не проверяет реальные банковские счета или голосовую связь.
  * Скриншоты и Compose semantics сохраняются после каждого шага для UX-аудита.
  */
 @RunWith(AndroidJUnit4::class)
 class UserJourneyVisualAuditTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    @Test fun firstRunExpenseAndNavigation() {
+    @Test fun firstRunFinanceJourneyIncludingDebtGoalHistoryDavidAndSettings() {
         val description = "Поездка на метро"
         try {
             waitFor("create_budget_fab", 40_000)
@@ -53,6 +54,10 @@ class UserJourneyVisualAuditTest {
             waitFor("tab_period", 30_000)
             waitForScreen("Можно потратить сегодня")
             capture("03-new-budget-dashboard")
+            compose.onNodeWithText("Предварительный риск кассового разрыва", substring = true)
+                .performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("500 ₽/день", substring = true)
+                .performScrollTo().assertIsDisplayed()
             compose.onNodeWithTag("embedded_add_operation_button", useUnmergedTree = true).performClick()
 
             waitFor("transaction_amount_input")
@@ -83,17 +88,74 @@ class UserJourneyVisualAuditTest {
             compose.onNodeWithText("Можно потратить сегодня", useUnmergedTree = true).performScrollTo()
             capture("06-dashboard-after-expense")
 
-            for ((tag, heading, filename) in listOf(
-                Triple("tab_debts", "ОБЯЗАТЕЛЬСТВА И ЗАЙМЫ", "07-debts"),
-                Triple("tab_goals", "КАПИТАЛ И КОПИЛКИ", "08-goals"),
-                Triple("tab_annual", "ГОДОВОЙ АУДИТ", "09-annual-report"),
-                Triple("tab_period", "Можно потратить сегодня", "10-return-to-dashboard")
-            )) {
-                waitFor(tag)
-                compose.onNodeWithTag(tag, useUnmergedTree = true).performClick()
-                waitForScreen(heading)
-                capture(filename)
+            waitFor("tab_debts")
+            compose.onNodeWithTag("tab_debts", useUnmergedTree = true).performClick()
+            waitForScreen("ОБЯЗАТЕЛЬСТВА И ЗАЙМЫ")
+            capture("07-debts-empty")
+            compose.onNodeWithTag("add_debt_button", useUnmergedTree = true).performClick()
+            waitFor("debt_name_input")
+            capture("08-add-debt-empty")
+            compose.onNodeWithTag("debt_name_input", useUnmergedTree = true).performTextInput("Т-Банк")
+            compose.onNodeWithTag("debt_amount_input", useUnmergedTree = true).performTextInput("1200")
+            capture("09-add-debt-filled")
+            compose.onNodeWithTag("save_debt_button", useUnmergedTree = true).performClick()
+            waitForClosure("save_debt_button")
+            compose.onNodeWithText("Т-Банк", useUnmergedTree = true).assertIsDisplayed()
+            capture("10-debt-created")
+
+            waitFor("tab_goals")
+            compose.onNodeWithTag("tab_goals", useUnmergedTree = true).performClick()
+            waitForScreen("КАПИТАЛ И КОПИЛКИ")
+            capture("11-goals-empty")
+            compose.onNodeWithTag("add_goal_button", useUnmergedTree = true).performClick()
+            waitFor("goal_name_input")
+            capture("12-add-goal-empty")
+            compose.onNodeWithTag("goal_name_input", useUnmergedTree = true).performTextInput("Новый ноутбук")
+            compose.onNodeWithTag("goal_target_input", useUnmergedTree = true).performTextInput("80000")
+            capture("13-add-goal-filled")
+            compose.onNodeWithTag("save_goal_button", useUnmergedTree = true).performClick()
+            waitForClosure("save_goal_button")
+            compose.onNodeWithText("Новый ноутбук", useUnmergedTree = true).assertIsDisplayed()
+            capture("14-goal-created")
+
+            waitFor("tab_annual")
+            compose.onNodeWithTag("tab_annual", useUnmergedTree = true).performClick()
+            waitForScreen("ГОДОВОЙ АУДИТ")
+            capture("15-annual-report")
+
+            waitFor("tab_period")
+            compose.onNodeWithTag("tab_period", useUnmergedTree = true).performClick()
+            waitForScreen("Можно потратить сегодня")
+            capture("16-return-to-dashboard")
+
+            compose.onNodeWithText("Давид AI", useUnmergedTree = true).performClick()
+            waitFor("david_text_input")
+            capture("17-david-chat")
+            compose.onNodeWithTag("david_text_input", useUnmergedTree = true)
+                .performTextInput("Сколько денег у меня осталось?")
+            compose.onNodeWithTag("david_send_button", useUnmergedTree = true).performClick()
+            compose.waitUntil(20_000) {
+                runCatching {
+                    compose.onNodeWithText("мухи отдельно, котлеты отдельно!", substring = true)
+                        .assertIsDisplayed()
+                }.isSuccess
             }
+            compose.onNodeWithText("Расходы за период", substring = true).assertIsDisplayed()
+            compose.onNodeWithText("1200 ₽", substring = true).assertIsDisplayed()
+            capture("18-david-read-only-financial-answer")
+
+            compose.onNodeWithTag("david_chat_back_button", useUnmergedTree = true).performClick()
+            waitForClosure("david_text_input")
+            compose.onNodeWithTag("profile_settings_button", useUnmergedTree = true).performClick()
+            waitFor("settings_general_item")
+            capture("19-settings-hub")
+            compose.onNodeWithTag("settings_general_item", useUnmergedTree = true).performClick()
+            waitForScreen("ОСНОВНАЯ ВАЛЮТА")
+            capture("20-settings-general")
+            compose.onNodeWithContentDescription("Назад").performClick()
+            waitFor("settings_general_item")
+            compose.onNodeWithContentDescription("Закрыть").performClick()
+            waitForClosure("settings_general_item")
         } catch (failure: Throwable) {
             runCatching { capture("99-failure") }
             throw failure

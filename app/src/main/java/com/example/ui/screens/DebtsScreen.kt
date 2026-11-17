@@ -978,7 +978,7 @@ fun AddDebtDialog(
                             value = name,
                             onValueChange = { name = it.capitalizeFirstLetter() },
                             placeholder = { Text("например: Иван, Т-Банк", color = Slate500) },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().testTag("debt_name_input"),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
                                 capitalization = KeyboardCapitalization.Sentences,
@@ -1019,7 +1019,7 @@ fun AddDebtDialog(
                                     fontSize = 14.sp
                                 )
                             },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().testTag("debt_amount_input"),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Number,
@@ -1114,6 +1114,7 @@ fun AddDebtDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(52.dp)
+                                .testTag("save_debt_button")
                                 .shadow(
                                     elevation = if (isFormValid) 10.dp else 0.dp,
                                     shape = RoundedCornerShape(16.dp),
