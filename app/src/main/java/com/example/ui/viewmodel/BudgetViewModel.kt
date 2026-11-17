@@ -536,6 +536,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             repository.deleteProfile(id)
             if (_selectedBudgetId.value == id) {
+                loadProfileFinancialPreferences(null)
                 _selectedBudgetId.value = null
             }
             _toastMessage.emit("Бюджет удален")
@@ -732,7 +733,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
             if (currentBudgetId != null) {
                 repository.deleteProfile(currentBudgetId)
                 val newP = repository.createProfile("Основной бюджет")
-                _selectedBudgetId.value = newP.id
+                selectBudget(newP.id)
             } else {
                 repository.clearAllData()
             }
